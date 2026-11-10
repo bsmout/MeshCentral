@@ -12,10 +12,12 @@
     <link rel="icon" type="image/png" sizes="16x16" href="{{{domainurl}}}favicon-16x16.png">
     <link rel="icon" type="image/png" sizes="32x32" href="{{{domainurl}}}favicon-32x32.png">
     <link rel="apple-touch-icon" href="/favicon-303x303.png" />
+    {{{customCSSTags}}}
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="#ffffff">
     <meta name="apple-mobile-web-app-title" content="{{{title}}}">
     <script type="text/javascript" src="scripts/common-0.0.1{{min}}.js"></script>
+    {{{customJSTags}}}
     <script type="text/javascript" src="scripts/u2f-api{{min}}.js"></script>
     <meta name="msapplication-TileColor" content="#00aba9">
     <meta name="theme-color" content="#ffffff">
@@ -63,15 +65,15 @@
                                     <table>
                                         <tr>
                                             <td id=loginusername align=right width=100>Username:</td>
-                                            <td><input id=username type=text autocomplete="username" maxlength=64 name=username onchange=validateLogin(1) onkeyup=validateLogin(1,event) /></td>
+                                            <td><input id=username type=text autocomplete="username" maxlength=64 name=username required onchange=validateLogin(1) onkeyup=validateLogin(1,event)  /></td>
                                         </tr>
                                         <tr>
                                             <td align=right>Password:</td>
-                                            <td><input id=password type=password autocomplete="current-password" maxlength=256 name=password autocomplete=off onchange=validateLogin(2) onkeyup=validateLogin(2,event) /></td>
+                                            <td><input id=password type=password autocomplete="current-password" maxlength=256 name=password autocomplete=off required onchange=validateLogin(2) onkeyup=validateLogin(2,event)  /></td>
                                         </tr>
                                         <tr>
                                             <td><div id=showPassHintLink style=display:none><a onclick=showPassHint() style="cursor:pointer">Show Hint</a></div></td>
-                                            <td align=right><input id=loginButton type=submit value="Log In" disabled="disabled" /></td>
+                                            <td align=right><input id=loginButton type=submit value="Log In" /></td>
                                         </tr>
                                     </table>
                                     <div id="hrAccountDiv" style="display:none"><hr /></div>
@@ -85,14 +87,16 @@
                                     <div id="authStrategies" style="display:none">
                                         <hr />
                                         <div style="margin-bottom:8px">Log in using an existing account</div>
-                                        <a id="auth-twitter" href="auth-twitter" style="display:none"><img src="images/login/twitter32.png" loading="lazy" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Twitter" /></a>
-                                        <a id="auth-google" href="auth-google" style="display:none"><img src="images/login/google32.png" loading="lazy" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Google" /></a>
-                                        <a id="auth-github" href="auth-github" style="display:none"><img src="images/login/github32.png" loading="lazy" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using GitHub" /></a>
-                                        <a id="auth-reddit" href="auth-reddit" style="display:none"><img src="images/login/reddit32.png" loading="lazy" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Reddit" /></a>
-                                        <a id="auth-azure" href="auth-azure" style="display:none"><img src="images/login/azure32.png" loading="lazy" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Azure" /></a>
-                                        <a id="auth-jumpcloud" href="auth-jumpcloud" style="display:none"><img src="images/login/jumpcloud32.png" loading="lazy" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using JumpCloud" /></a>
-                                        <a id="auth-intel" href="auth-intel" style="display:none"><img src="images/login/intel32.png" loading="lazy" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Intel" /></a>
-                                        <a id="auth-saml" href="auth-saml" style="display:none"><img src="images/login/generic32.png" loading="lazy" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Single Sign-in" /></a>
+                                        <a id="auth-twitter" href="auth-twitter" style="display:none"><img src="images/login/twitter32.png" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Twitter" /></a>
+                                        <a id="auth-google" href="auth-google" style="display:none"><img src="images/login/google32.png" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Google" /></a>
+                                        <a id="auth-github" href="auth-github" style="display:none"><img src="images/login/github32.png" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using GitHub" /></a>
+                                        <a id="auth-azure" href="auth-azure" style="display:none"><img src="images/login/azure32.png" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Azure" /></a>
+                                        <a id="auth-oidc" href="auth-oidc" title="Sign-in using OpenID Connect" style="display:none"><img src="{{oidcButtonIcon}}" srcset="{{oidcButtonIcon2x}}" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer;background-color:white" /></a>
+                                        <a id="auth-oidc-azure" href="auth-oidc" title="Sign-in with Azure using OpenID Connect" style="display:none"><img src="{{oidcButtonIcon}}" srcset="{{oidcButtonIcon2x}}" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer;background-color:white" /></a>
+                                        <a id="auth-oidc-google" href="auth-oidc" title="Sign-in with Google using OpenID Connect" style="display:none"><img src="{{oidcButtonIcon}}" srcset="{{oidcButtonIcon2x}}" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer;background-color:white" /></a>
+                                        <a id="auth-jumpcloud" href="auth-jumpcloud" style="display:none"><img src="images/login/jumpcloud32.png" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using JumpCloud" /></a>
+                                        <a id="auth-intel" href="auth-intel" style="display:none"><img src="images/login/intel32.png" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Sign-in using Intel" /></a>
+                                        <a id="auth-saml" href="auth-saml" style="display:none"><img src="images/login/generic32.png" width="32" height="32" style="margin-left:3px;margin-right:3px;border-radius:3px;box-shadow:2px 2px 5px black;cursor:pointer" title="Single Sign-in" /></a>
                                     </div>
                                 </form>
                             </div>
@@ -130,6 +134,14 @@
                                                 <td align=right>Creation Token:</td>
                                                 <td><input id=anewaccountpass type=password name=anewaccountpass autocomplete=off maxlength=256 onkeydown=haltReturn(event) onchange=validateCreate(6) onkeyup=validateCreate(6,event) /></td>
                                             </tr>
+                                            <tr id=newAccountCaptchaImg title="CAPTCHA image">
+                                                <td></td>
+                                                <td colspan=2><img src="{{{newAccountCaptchaImage}}}" /></td>
+                                            </tr>
+                                            <tr id=newAccountCaptcha title="Security check">
+                                                <td id="nuCaptcha" align=right>Security Check:</td>
+                                                <td><input id=anewaccountcaptcha type=text name=anewaccountcaptcha {{{autocomplete}}}=off maxlength=256 onkeydown=haltReturn(event) onchange=validateCreate(7,event) onkeyup=validateCreate(7,event) /></td>
+                                            </tr>
                                             <tr>
                                                 <td colspan=2>
                                                     <div style=float:right><input id=createButton type=submit value="Create Account" disabled="disabled" /></div>
@@ -139,6 +151,7 @@
                                         </table>
                                         <hr /><a onclick=xgo(1) style=cursor:pointer>Back to login</a>
                                         <input id=createformargs name="urlargs" type="hidden" value="" />
+                                        <input id=createformcaptcha name="captchaargs" type="hidden" value="{{{newAccountCaptcha}}}" />
                                     </form>
                                 </div>
                             </div>
@@ -310,10 +323,12 @@
     </div>
     <script>
         'use strict';
+        var random = '{{{randomlength}}}' // Random length string for BREACH mitigation
         var loginMode = '{{{loginmode}}}';
         var newAccount = '{{{newAccount}}}';
         var passhint = '{{{passhint}}}';
         var newAccountPass = parseInt('{{{newAccountPass}}}');
+        var newAccountCaptcha = '{{{newAccountCaptcha}}}';
         var emailCheck = '{{{emailcheck}}}';
         var features = parseInt('{{{features}}}');
         var passRequirements = '{{{passRequirements}}}';
@@ -332,7 +347,7 @@
         // Display the right server message
         var messageid = parseInt('{{{messageid}}}');
         var okmessages = ['', "If valid, reset mail sent.", "Email sent.", "Email verification required, check your mailbox and click the confirmation link.", "SMS sent."];
-        var failmessages = ["Unable to create account.", "Account limit reached.", "Existing account with this email address.", "Invalid account creation token.", "Username already exists.", "Password rejected, use a different one.", "Invalid email.", "Account not found.", "Invalid token, try again.", "Unable to sent email.", "Account locked.", "Access denied.", "Login failed, check username and password.", "Password change requested.", "IP address blocked, try again later."];
+        var failmessages = ["Unable to create account.", "Account limit reached.", "Existing account with this email address.", "Invalid account creation token.", "Username already exists.", "Password rejected, use a different one.", "Invalid email.", "Account not found.", "Invalid token, try again.", "Unable to sent email.", "Account locked.", "Access denied.", "Login failed, check username and password.", "Password change requested.", "IP address blocked, try again later.", "Server under maintenance.", "Unable to send device notification.", "Invalid security check."];
         if (messageid > 0) {
             var msg = '';
             if ((messageid < 100) && (messageid < okmessages.length)) { msg = okmessages[messageid]; }
@@ -341,6 +356,19 @@
                 if (messageid >= 100) { msg = ('<span class="msg error"><b style=color:#8C001A>' + msg + '<b></span><br /><br />'); } else { msg = ('<span class="msg success"><b>' + msg + '</b></span><br /><br />'); }
                 for (var i = 1; i < 8; i++) { QH('message' + i, msg); }
             }
+        }
+
+        // Display flash error Messages
+        var flashErrors = JSON.parse('{{{flashErrors}}}');
+        if (flashErrors && (flashErrors.length > 0)) {
+            var msg = '';
+            for (i = 0; i < flashErrors.length; i++) {
+                if (flashErrors[i]) {
+                    msg += '<span class="msg error"><b style=color:#8C001A>' + flashErrors[i] + '<b></span><br /><br />';
+                }
+            }
+            QH('message1', msg);
+            QV('message1', true);
         }
 
         // If URL arguments are provided, add them to form posts
@@ -385,21 +413,31 @@
                 if (authStrategies.indexOf('twitter') >= 0) { QV('auth-twitter', true); }
                 if (authStrategies.indexOf('google') >= 0) { QV('auth-google', true); }
                 if (authStrategies.indexOf('github') >= 0) { QV('auth-github', true); }
-                if (authStrategies.indexOf('reddit') >= 0) { QV('auth-reddit', true); }
                 if (authStrategies.indexOf('azure') >= 0) { QV('auth-azure', true); }
+                if (authStrategies.indexOf('oidc') >= 0) { QV('auth-oidc', true); }
+                if (authStrategies.indexOf('oidc-azure') >= 0) { QV('auth-oidc-azure', true); }
+                if (authStrategies.indexOf('oidc-google') >= 0) { QV('auth-oidc-google', true); }
                 if (authStrategies.indexOf('jumpcloud') >= 0) { QV('auth-jumpcloud', true); }
                 if (authStrategies.indexOf('intel') >= 0) { QV('auth-intel', true); }
                 if (authStrategies.indexOf('saml') >= 0) { QV('auth-saml', true); }
+                // Override OIDC button title if custom text is configured by admin
+                var oidcButtonText = '{{{oidcButtonText}}}';
+                if (oidcButtonText != '') {
+                    Q('auth-oidc').title = oidcButtonText;
+                    Q('auth-oidc-azure').title = oidcButtonText;
+                    Q('auth-oidc-google').title = oidcButtonText;
+                }
             }
 
             window.onresize = center;
             center();
-            validateLogin();
             validateCreate();
             if (loginMode.length != 0) { go(parseInt(loginMode)); } else { go(1); }
             QV('newAccountDiv', (newAccount === '1') || (newAccount === 'true')); // If new accounts are not allowed, don't display the new account link.
             if ((passRequirements.hint === true) && (passhint != null) && (passhint.length > 0)) { QV('showPassHintLink', true); }
             QV('newAccountPass', (newAccountPass == 1));
+            QV('newAccountCaptcha', (newAccountCaptcha != ''));
+            QV('newAccountCaptchaImg', (newAccountCaptcha != ''));
             QV('resetAccountDiv', (emailCheck == 'true'));
             QV('hrAccountDiv', (emailCheck == 'true') || (newAccountPass == 1));
 
@@ -544,12 +582,13 @@
         }
 
         function validateLogin(box, e) {
-            var ok = ((Q('username').value.length > 0) && (Q('username').value.indexOf(' ') == -1) && (Q('password').value.length > 0));
-            QE('loginButton', ok);
-            setDialogMode(0);
-            if ((e != null) && (e.keyCode == 13)) { if (box == 1) { Q('password').focus(); } else if (box == 2) { Q('loginButton').click(); } }
-            if (e != null) { haltEvent(e); }
+            setTimeout(function(){
+                setDialogMode(0);
+                if ((e != null) && (e.keyCode == 13)) { if (box == 1) { Q('password').focus(); } else if (box == 2) { Q('loginButton').click(); } }
+                if (e != null) { haltEvent(e); }
+            }, 100);
         }
+
 
         function validateCreate(box,e) {
             setDialogMode(0);
@@ -589,8 +628,9 @@
                 if (box == 2) { Q('apassword1').focus(); }
                 if (box == 3) { Q('apassword2').focus(); }
                 if (box == 4) { Q('apasswordhint').focus(); }
-                if (box == 5) { if (newAccountPass == 1) { Q('anewaccountpass').focus(); } else { Q('createButton').click(); } }
-                if (box == 6) { Q('createButton').click(); }
+                if (box == 5) { if (newAccountPass == 1) { Q('anewaccountpass').focus(); } else { box = 6; } }
+                if (box == 6) { if (newAccountCaptcha != '') { Q('anewaccountcaptcha').focus(); } else { box = 7; } }
+                if (box == 7) { Q('createButton').click(); }
             }
             if (e != null) { haltEvent(e); }
         }

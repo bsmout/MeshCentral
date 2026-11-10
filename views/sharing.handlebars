@@ -10,6 +10,7 @@
     <link type="text/css" href="styles/style.css" media="screen" rel="stylesheet" title="CSS" />
     <link type="text/css" href="styles/style-sharing.css" media="screen" rel="stylesheet" title="CSS" />
     <link type="text/css" href="styles/xterm.css" media="screen" rel="stylesheet" title="CSS" />
+    {{{customCSSTags}}}
     <link rel="apple-touch-icon" href="/favicon-303x303.png" />
     <script type="text/javascript" src="scripts/common-0.0.1{{min}}.js"></script>
     <script type="text/javascript" src="scripts/amt-redir-ws-0.1.0{{{min}}}.js"></script>
@@ -26,7 +27,9 @@
     <script type="text/javascript" src="scripts/amt-terminal-0.0.2{{min}}.js"></script>
     <script type="text/javascript" src="scripts/xterm{{{min}}}.js"></script>
     <script type="text/javascript" src="scripts/xterm-addon-fit{{{min}}}.js"></script>
+    <script type="text/javascript" src="scripts/xterm-addon-image{{{min}}}.js"></script>
     <script keeplink=1 type="text/javascript" src="scripts/filesaver.min.js"></script>
+    {{{customJSTags}}}
     <title>{{{title}}}</title>
 </head>
 <body style="overflow:hidden;background-color:black">
@@ -71,8 +74,8 @@
             </div>
             <div id=deskarea4 class="areaFoot" style="min-height:24px">
                 <div class="toright2">
-                    <span id="DeskLatency" title="Desktop Session Latency"></span>
-                    <span id="DeskTimer" style="display:none" title="Session time"></span>&nbsp;
+                    <span id="DeskLatency" style="line-height:22px;width:50px"  title="Desktop Session Latency"></span>
+                    <span id="DeskTimer" style="line-height:22px" title="Session time"></span>&nbsp;
                     <select id=termdisplays style="display:none" onchange=deskSetDisplay(event) onkeypress="return false" onkeydown="return false"></select>&nbsp;
                     <span id=DeskSaveImageButton title="Save a screenshot of the remote desktop"><img src='images/icon-camera.png' onclick=deskSaveImage() height=16 width=16 style=padding-top:2px /></span>
                 </div>
@@ -217,6 +220,13 @@
             <div id=dialog2 style="">
                 <div id=id_dialogOptions></div>
             </div>
+            <div id=dialog4 style="">
+                <input id="d4WrapButton" type="button" value="Wrap On" onclick="d4ToggleWrap()" />
+                <input id="d4SizeButton" type="button" value="Small" onclick="d4ToggleSize()" />
+                <input id="d4EncodingButton" type="button" value="Raw" onclick="d4ToggleEncoding()" />
+                <input id="d4LineBreakButton" type="button" value="Windows" onclick="d4ToggleLineBreak()" />
+                <textarea id=d4editorarea autocomplete="off" style="height:calc(100vh - 286px);width:100%;overflow:scroll;resize:none;white-space:pre"></textarea>
+            </div>
             <div id=dialog7 style="">
                 <div id="d7meshkvm">
                     <h4>Agent Remote Desktop</h4>
@@ -240,6 +250,7 @@
                     <div>
                         <div>Frame rate</div>
                         <select id="d7framelimiter" dir="rtl">
+                            <option value=20>Very fast</option>
                             <option selected=selected value=50>Fast</option>
                             <option value=100>Medium</option>
                             <option value=400>Slow</option>
@@ -283,12 +294,13 @@
         </div>
     </div>
     <script>
+        var random = '{{{randomlength}}}' // Random length string for BREACH mitigation
         var sessionActivity = null;
         var desktop = null;
         var agentPresent = true;
         var intelAmtPresent = false;
         var deskAspectRatio = 0;
-        var desktopsettings = { encoding: 2, showfocus: false, showmouse: true, showcad: true, quality: 40, scaling: 1024, framerate: 100, localkeymap: false };
+        var desktopsettings = { encoding: 2, showfocus: false, showmouse: true, showcad: true, quality: 40, scaling: 1024, framerate: 100, localkeymap: false, remotekeymap: false };
         var serverPublicNamePort = '{{{serverDnsName}}}:{{{serverPublicPort}}}';
         var domain = '{{{domain}}}';
         var domainUrl = '{{{domainurl}}}';
@@ -309,6 +321,7 @@
         }
         var features = parseInt('{{{features}}}');
         var features2 = parseInt('{{{features2}}}');
+        var features3 = parseInt('{{{features3}}}');
 
         // Load desktop settings
         var t = null;
@@ -320,6 +333,7 @@
         var terminal = null;
         var xterm = null;
         var xtermfit = null;
+        var xtermimage = null;
         var xtermResizeTimer = null;
 
         // Files
@@ -335,9 +349,20 @@
             document.onkeypress = ondockeypress;
             document.onkeydown = ondockeydown;
             document.onkeyup = ondockeyup;
+            window.onblur = ondocblur;
             setupDesktop();
             setupTerminal();
             setupFiles();
+
+            // Set the file editor
+            d4EditWrapVal = Number(getstore('editorWrap', 0));
+            d4EditSizeVal = Number(getstore('editorSize', 0));
+            d4EditEncodingVal = Number(getstore('editorEncoding', 0));
+            d4EditLineBreakVal = Number(getstore('editorLineBreak', 0));
+            d4ToggleWrap(true);
+            d4ToggleSize(true);
+            d4ToggleEncoding(true);
+            d4ToggleLineBreak(true);
 
             // Set the document title
             if (nodeName.length > 0) { document.title += ' - ' + nodeName; }
@@ -392,7 +417,7 @@
         }
 
         function deskAdjust() {
-            if ((xxcurrentView == 12) && (terminal != null) && (xtermfit != null)) { xtermfit.fit(); } // Terminal 
+            if ((xxcurrentView == 12) && (terminal != null) && (xtermfit != null)) { xtermfit.fit(); } // Terminal
             QS('fileArea4')['height'] = 'calc(100vh - ' + (90 + Q('fileArea2').clientHeight) + 'px)'; // Files
             var parentH = Q('DeskParent').clientHeight, parentW = Q('DeskParent').clientWidth;
             var deskH = Q('Desk').height, deskW = Q('Desk').width;
@@ -479,6 +504,9 @@
             QE('DeskWD', deskState == 3);
             QV('deskkeys', viewOnly != 1);
             QE('deskkeys', deskState == 3);
+            QV('DeskTimer', deskState == 3);
+            QV('DeskLatency', deskState == 3);
+            QS('DeskLatency').display = (deskState == 3 ? 'inline-block' : 'none');
 
             // Display this only if we have Chat & Notify permissions
             QV('DeskSaveImageButton', (deskState == 3) && (Q('Desk')['toBlob'] != null));
@@ -535,7 +563,7 @@
                             } else if ((data.action == 'present') && (webRtcDesktop == null)) {
                                 // Setup WebRTC channel
                                 webRtcDesktop = { platform: data.platform };
-                                var configuration = null; //{ "iceServers": [ { 'urls': 'stun:stun.services.mozilla.com' }, { 'urls': 'stun:stun.l.google.com:19302' } ] };
+                                var configuration = null; //{ "iceServers": [ { 'urls': 'stun:stun.cloudflare.com:3478' }, { 'urls': 'stun:stun.l.google.com:19302' } ] };
                                 if (typeof RTCPeerConnection !== 'undefined') { webRtcDesktop.webrtc = new RTCPeerConnection(configuration); }
                                 else if (typeof webkitRTCPeerConnection !== 'undefined') { webRtcDesktop.webrtc = new webkitRTCPeerConnection(configuration); }
 
@@ -548,6 +576,7 @@
                                     desktop.m.hold(true);
                                     webRtcDesktop.webRtcActive = true;
                                     webRtcDesktop.softdesktop = CreateKvmDataChannel(webRtcDesktop.webchannel, CreateAgentRemoteDesktop('Desk', Q('id_mainarea')), desktop.m);
+                                    webRtcDesktop.softdesktop.m.UseExtendedKeyFlag = ([1, 2, 3, 4, 21, 22, 34, 42, 43].indexOf(parseInt('{{{agentId}}}')) >= 0);
                                     webRtcDesktop.softdesktop.m.setRotation(desktop.m.rotation);
                                     webRtcDesktop.softdesktop.m.onScreenSizeChange = deskAdjust;
                                     if (desktopsettings.quality) { webRtcDesktop.softdesktop.m.CompressionLevel = desktopsettings.quality; } // Number from 1 to 100. 50 or less is best.
@@ -597,6 +626,7 @@
                 } else if ((contype == null) || (contype == 1) || (contype == 3)) {
                     // Setup the Mesh Agent remote desktop
                     desktop = CreateAgentRedirect(null, CreateAgentRemoteDesktop('Desk'), serverPublicNamePort, authCookie, null, domainUrl);
+                    desktop.m.UseExtendedKeyFlag = ([1, 2, 3, 4, 21, 22, 34, 42, 43].indexOf(parseInt('{{{agentId}}}')) >= 0);
                     desktop.m.stopInput = (viewOnly == 1);
                     desktop.m.mouseCursorActive(true);
                     desktop.debugmode = debugmode;
@@ -623,7 +653,7 @@
                     desktop.m.onDisplayinfo = deskDisplayInfo;
                     desktop.m.onScreenSizeChange = deskAdjust;
                     desktop.Start(null);
-                    desktop.latency.callback = function (ms) { console.log('latency', ms); updateSessionTime(); };
+                    desktop.latency.callback = function (ms) { /* console.log('latency', ms); */ updateSessionTime(); };
                     desktop.contype = 1;
                 }
             } else {
@@ -737,12 +767,25 @@
             if (desktop && desktop.startTime) {
                 if (desktop.latency && (desktop.latency.current >= 0)) { latencyStr = format('{0} ms, ', desktop.latency.current); }
                 seconds = Math.floor((new Date() - desktop.startTime) / 1000);
-                QH('DeskTimer', latencyStr + zeroPad(Math.floor(seconds / 3600), 2) + ':' + zeroPad((Math.floor(seconds / 60) % 60), 2) + ':' + zeroPad((seconds % 60), 2));
+                QH('DeskTimer', zeroPad(Math.floor(seconds / 3600), 2) + ':' + zeroPad((Math.floor(seconds / 60) % 60), 2) + ':' + zeroPad((seconds % 60), 2));
+                QH('DeskLatency', latencyStr);
             } else {
                 QH('DeskTimer', '');
+                QH('DeskLatency', '');
             }
 
-            if (desktop == null) { clearInterval(updateSessionTimer); updateSessionTimer = null; }
+            // Terminal
+            seconds = 0;
+            if (terminal && terminal.startTime) {
+                QH('TermLatency', (terminal.latency && (terminal.latency.current >= 0)) ? format('{0} ms, ', terminal.latency.current) : '');
+                seconds = Math.floor((new Date() - terminal.startTime) / 1000);
+                QH('TermTimer', zeroPad(Math.floor(seconds / 3600), 2) + ':' + zeroPad((Math.floor(seconds / 60) % 60), 2) + ':' + zeroPad((seconds % 60), 2));
+            } else {
+                QH('TermLatency', '');
+                QH('TermTimer', '');
+            }
+
+            if ((desktop == null) && (terminal == null)) { clearInterval(updateSessionTimer); updateSessionTimer = null; }
         }
 
         function showDesktopSettings() {
@@ -779,7 +822,7 @@
         }
 
         function applyDesktopSettings() {
-            var r = '', ops = (features2 & 1) ? [90, 80, 70, 60, 50, 40, 30, 20, 10, 5, 1] : [60, 50, 40, 30, 20, 10, 5, 1]
+            var r = '', ops = (features2 & 1) ? [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 5, 1] : [60, 50, 40, 30, 20, 10, 5, 1]
             for (var i in ops) { r += '<option value=' + ops[i] + '>' + ops[i] + '%</option>'; }
             QH('d7bitmapquality', r);
             d7desktopmode.value = desktopsettings.encoding;
@@ -796,6 +839,7 @@
 
         // Enter browser fullscreen
         function enterBrowserFullscreen(elem) {
+            if (navigator.keyboard && navigator.keyboard.lock) { navigator.keyboard.lock(); }
             if (elem.requestFullscreen) { elem.requestFullscreen(); }
             else if (elem.msRequestFullscreen) { elem.msRequestFullscreen(); }
             else if (elem.mozRequestFullScreen) { elem.mozRequestFullScreen(); }
@@ -808,6 +852,7 @@
             else if (document.msExitFullscreen) { document.msExitFullscreen(); }
             else if (document.mozCancelFullScreen) { document.mozCancelFullScreen(); }
             else if (document.webkitExitFullscreen) { document.webkitExitFullscreen(); }
+            if (navigator.keyboard && navigator.keyboard.unlock) { navigator.keyboard.unlock(); }
         }
 
         // Return true if the browser is fullscreen. This is a delayed method that will return true/false late. Not very useful.
@@ -887,6 +932,7 @@
 
         // Remote desktop special key combos for Windows
         function deskSendKeys() {
+            Q('DeskWD').blur();
             if (xxdialogMode || desktop == null || desktop.State != 3) return;
             var ks = Q('deskkeys').value;
             if (ks == 0) { // WIN+Down arrow
@@ -1049,24 +1095,30 @@
                 }, 10);
             } else {
                 // MeshAgent
-                for (var i in txt) {
-                    var a = txt.charCodeAt(i), b = ltxt.charCodeAt(i);
-                    if (((a >= 65) && (a <= 90)) || ((a >= 97) && (a <= 122))) {
-                        if ((a == b) && (shift == false)) { x.push([desktop.m.KeyAction.DOWN, 16]); shift = true; } // LShift down
-                        if ((a != b) && (shift == true)) { x.push([desktop.m.KeyAction.UP, 16]); shift = false; } // LShift up
-                    } else if ((a >= 48) && (a <= 57)) {
-                        if (shift == true) { x.push([desktop.m.KeyAction.UP, 16]); shift = false; } // Shift up
-                    } else if (DeskTypeTranslate[a]) {
-                        if (shift == true) { x.push([desktop.m.KeyAction.UP, 16]); shift = false; } // Shift up
-                        b = DeskTypeTranslate[a];
-                    } else if (DeskTypeShiftTranslate[a]) {
-                        if (shift == false) { x.push([desktop.m.KeyAction.DOWN, 16]); shift = true; } // LShift down
-                        b = DeskTypeShiftTranslate[a];
+                if (desktopsettings.remotekeymap !== true) {
+                    // New unicode typing
+                    desktop.m.SendStringUnicode(txt);
+                } else {
+                    // Old scan code typing. This is for non-unicode system.
+                    for (var i in txt) {
+                        var a = txt.charCodeAt(i), b = ltxt.charCodeAt(i);
+                        if (((a >= 65) && (a <= 90)) || ((a >= 97) && (a <= 122))) {
+                            if ((a == b) && (shift == false)) { x.push([desktop.m.KeyAction.DOWN, 16]); shift = true; } // LShift down
+                            if ((a != b) && (shift == true)) { x.push([desktop.m.KeyAction.UP, 16]); shift = false; } // LShift up
+                        } else if ((a >= 48) && (a <= 57)) {
+                            if (shift == true) { x.push([desktop.m.KeyAction.UP, 16]); shift = false; } // Shift up
+                        } else if (DeskTypeTranslate[a]) {
+                            if (shift == true) { x.push([desktop.m.KeyAction.UP, 16]); shift = false; } // Shift up
+                            b = DeskTypeTranslate[a];
+                        } else if (DeskTypeShiftTranslate[a]) {
+                            if (shift == false) { x.push([desktop.m.KeyAction.DOWN, 16]); shift = true; } // LShift down
+                            b = DeskTypeShiftTranslate[a];
+                        }
+                        x.push([desktop.m.KeyAction.DOWN, b], [desktop.m.KeyAction.UP, b]);
                     }
-                    x.push([desktop.m.KeyAction.DOWN, b], [desktop.m.KeyAction.UP, b]);
+                    if (shift == true) { x.push([desktop.m.KeyAction.UP, 16]); shift = false; } // Shift up
+                    desktop.m.SendKeyMsgKC(x);
                 }
-                if (shift == true) { x.push([desktop.m.KeyAction.UP, 16]); shift = false; } // Shift up
-                desktop.m.SendKeyMsgKC(x);
             }
         }
 
@@ -1349,7 +1401,7 @@
                         xterminal.m.TermDraw();
                     } else {
                         xterm.dispose();
-                        xterm = xtermfit = null;
+                        xterm = xtermfit = xtermimage = null;
                     }
                     if (terminal != null) { terminal.Stop(); terminal = null; }
                     break;
@@ -1364,20 +1416,6 @@
                     break;
             }
             updateTerminalButtons();
-        }
-
-        function updateSessionTime() {
-            // Terminal
-            var latencyStr = '', seconds = 0;
-            if (terminal && terminal.startTime) {
-                if (terminal.latency && (terminal.latency.current >= 0)) { latencyStr = format('{0} ms, ', terminal.latency.current); }
-                seconds = Math.floor((new Date() - terminal.startTime) / 1000);
-                QH('TermTimer', latencyStr + zeroPad(Math.floor(seconds / 3600), 2) + ':' + zeroPad((Math.floor(seconds / 60) % 60), 2) + ':' + zeroPad((seconds % 60), 2));
-            } else {
-                QH('TermTimer', '');
-            }
-
-            if (terminal == null) { clearInterval(updateSessionTimer); updateSessionTimer = null; }
         }
 
         // DEBUG
@@ -1398,7 +1436,13 @@
             return obj;
         }
 
-        function tunnelUpdate(data) { if (typeof data == 'string') { xterm.writeUtf8(data); } else { xterm.writeUtf8(new Uint8Array(data)); } }
+        function tunnelUpdate(data) {
+            if (xterm.writeUtf8) {
+                if (typeof data == 'string') { xterm.writeUtf8(data); } else { xterm.writeUtf8(new Uint8Array(data)); }
+            } else {
+                if (typeof data == 'string') { xterm.write(data); } else { xterm.write(new Uint8Array(data)); }
+            }
+        }
 
         // Send the new terminal size to the agent
         function xTermSendResize() {
@@ -1452,8 +1496,10 @@
                 // Setup the terminal with auto-fit
                 if (xterm != null) { xterm.dispose(); }
                 xtermfit = new FitAddon.FitAddon();
-                xterm = new Terminal();
+                xtermimage = new ImageAddon.ImageAddon();
+                xterm = new Terminal({ allowProposedApi: true });
                 if (xtermfit) { xterm.loadAddon(xtermfit); }
+                xterm.loadAddon(xtermimage);
                 xterm.open(Q('termarea3xdiv')); // termarea3x
                 xterm.onData(function (data) { if (terminal != null) { terminal.sendText(data); } })
                 if (xtermfit) { xtermfit.fit(); }
@@ -1560,7 +1606,7 @@
 
         //
         // Files
-        // 
+        //
 
         function setupFiles() {
             // Setup the files tab
@@ -1726,9 +1772,10 @@
             for (var i in filetreexx) {
                 // Figure out the name and shortname
                 var f = filetreexx[i], name = f.n, shortname;
-                shortname = name;
-                if (name.length > 70) { shortname = '<span title="' + EscapeHtml(name) + '">' + EscapeHtml(name.substring(0, 70)) + ("..." + '</span>'); } else { shortname = EscapeHtml(name); }
-                name = EscapeHtml(name);
+                // shortname = name;
+                // if (name.length > 70) { shortname = '<span title="' + EscapeHtml(name) + '">' + EscapeHtml(name.substring(0, 70)) + ("..." + '</span>'); } else { shortname = EscapeHtml(name); }
+                // Removed redundant filename length check because we handle it in the CSS
+                shortname = EscapeHtml(name);
 
                 // Figure out the date
                 var fdatestr = '';
@@ -1745,7 +1792,7 @@
                 var h = '';
                 if (f.t < 3) {
                     var right = '', title = '';
-                    h = '<div class=filelist file=999><input file=999 style=float:left name=fd class=fcb type=checkbox onchange=p13setActions() value=\'' + f.nx + '\'>&nbsp;<span style=float:right title="' + title + '">' + right + '</span><span><div class=fileIcon' + f.t + ' onclick=p13folderset("' + encodeURIComponentEx(f.nx) + '")></div><a href=# style=cursor:pointer onclick=\'return p13folderset("' + encodeURIComponentEx(f.nx) + '")\'>' + shortname + '</a></span></div>';
+                    h = '<div class=filelist file=999><input file=999 style=float:left name=fd class=fcb type=checkbox onchange=p13setActions() value=\'' + EscapeHtml(f.nx) + '\'>&nbsp;<span style=float:right title="' + title + '">' + right + '</span><span title="' + shortname + '"><div class=fileIcon' + f.t + ' onclick=p13folderset("' + encodeURIComponentEx(f.nx) + '")></div><a href=# style=cursor:pointer onclick=\'return p13folderset("' + encodeURIComponentEx(f.nx) + '")\'>' + shortname + '</a></span></div>';
                 } else {
                     var link = shortname;
                     if (f.s > 0) {
@@ -1755,9 +1802,9 @@
                         //link = '<a href="devicefile.ashx?c=' + authCookie + '&m=' + currentNode.meshid.split('/')[2] + '&n=' + currentNode._id.split('/')[2] + '&f=' + encodeURIComponentEx(newlinkpath + '/' + name) + '" download="' + name + '" style=cursor:pointer>' + shortname + '</a>';
                         // Server link
                         //link = '<a onclick=downloadFile("devicefile.ashx?c=' + authCookie + '&m=' + currentNode.meshid.split('/')[2] + '&n=' + currentNode._id.split('/')[2] + '&f=' + encodeURIComponentEx(newlinkpath + '/' + name) + '","' + encodeURIComponentEx(name) + '") style=cursor:pointer>' + shortname + '</a>';
-                        link = '<a onclick=downloadFile("devicefile.ashx?c=' + authCookie + '&f=' + encodeURIComponentEx(newlinkpath + '/' + name) + '","' + encodeURIComponentEx(name) + '") style=cursor:pointer>' + shortname + '</a>';
+                        link = '<a onclick=p13downloadDeviceFile("' + encodeURIComponentEx(newlinkpath + '/' + name) + '") style=cursor:pointer>' + shortname + '</a>';
                     }
-                    h = '<div id=fileEntry cmenu=filesContextMenu fileIndex=' + i + ' class=filelist file=3><input file=3 style=float:left name=fd class=fcb type=checkbox onchange=p13setActions() value=\'' + f.nx + '\'>&nbsp;<span class=fsize>' + fdatestr + '</span><span style=float:right>' + EscapeHtml(fsize) + '</span><span><div class=fileIcon' + f.t + '></div>' + link + '</span></div>';
+                    h = '<div id=fileEntry cmenu=filesContextMenu fileIndex=' + parseInt(i) + ' class=filelist file=3><input file=3 style=float:left name=fd class=fcb type=checkbox onchange=p13setActions() value=\'' + EscapeHtml(f.nx) + '\'>&nbsp;<span class=fsize>' + fdatestr + '</span><span style=float:right>' + EscapeHtml(fsize) + '</span><span title="' + shortname + '"><div class=fileIcon' + f.t + '></div>' + link + '</span></div>';
                 }
 
                 if (f.t < 3) { html1 += h; } else { html2 += h; }
@@ -1822,7 +1869,17 @@
 
         function p13sort_files(files) {
             var r = [], sortselection = Q('p13sortdropdown').value;
-            for (var i in files) { files[i].nx = i; if (files[i].s == null) { files[i].s = 0; } if (files[i].n == null) { files[i].n = i; } files[i].ln = files[i].n.toLowerCase(); r.push(files[i]); }
+            for (var i in files) {
+                var file = files[i];
+                file.nx = i;
+                file.t = parseInt(file.t);
+                if (isNaN(file.t)) { file.t = 3; }
+                if (file.s == null) { file.s = 0; }
+                if (file.n == null) { file.n = i; }
+                file.n = String(file.n);
+                file.ln = file.n.toLowerCase();
+                r.push(file);
+            }
             p13sortorder = 1;
             if (sortselection > 3) { p13sortorder = -1; sortselection -= 3; }
             if (sortselection == 1) { r.sort(p13sort_filename); }
@@ -1874,7 +1931,7 @@
         function p13createfolderEx() { files.sendText({ action: 'mkdir', reqid: 1, path: p13filetreelocation.join('/') + '/' + Q('p13renameinput').value }); p13folderup(999); }
         function p13deletefile() { var cc = p13getFileSelCount(), rec = (p13getFileSelDirCount() > 0) ? '<br /><br /><label><input type=checkbox id=p13recdeleteinput>' + "Recursive delete" + '</label><br>' : '<input type=checkbox id=p13recdeleteinput style=\'display:none\'>'; setDialogMode(2, "Delete", 3, p13deletefileEx, (cc > 1) ? (format("Delete {0} selected items?", cc) + rec) : ("Delete selected item?" + rec)); }
         function p13deletefileEx() { var delfiles = [], checkboxes = document.getElementsByName('fd'); for (var i = 0; i < checkboxes.length; i++) { if (checkboxes[i].checked) { delfiles.push(p13filetree.dir[checkboxes[i].value].n); } } files.sendText({ action: 'rm', reqid: 1, path: p13filetreelocation.join('/'), delfiles: delfiles, rec: Q('p13recdeleteinput').checked }); p13folderup(999); }
-        function p13renamefile() { var renamefile, checkboxes = document.getElementsByName('fd'); for (var i = 0; i < checkboxes.length; i++) { if (checkboxes[i].checked) { renamefile = p13filetree.dir[checkboxes[i].value].n; } } setDialogMode(2, "Rename", 3, p13renamefileEx, '<input type=text id=p13renameinput maxlength=64 onkeyup=p13fileNameCheck(event) style=width:100% value="' + renamefile + '" />', { action: 'rename', path: p13filetreelocation.join('/'), oldname: renamefile }); focusTextBox('p13renameinput'); p13fileNameCheck(); }
+        function p13renamefile() { var renamefile, checkboxes = document.getElementsByName('fd'); for (var i = 0; i < checkboxes.length; i++) { if (checkboxes[i].checked) { renamefile = p13filetree.dir[checkboxes[i].value].n; } } setDialogMode(2, "Rename", 3, p13renamefileEx, '<input type=text id=p13renameinput maxlength=64 onkeyup=p13fileNameCheck(event) style=width:100% value="' + EscapeHtml(renamefile) + '" />', { action: 'rename', path: p13filetreelocation.join('/'), oldname: renamefile }); focusTextBox('p13renameinput'); p13fileNameCheck(); }
         function p13renamefileEx(b, t) { t.newname = Q('p13renameinput').value; files.sendText(t); p13folderup(999); }
         function p13fileNameCheck(e) { var x = isFilenameValid(Q('p13renameinput').value); QE('idx_dlgOkButton', x); if ((x == true) && (e != null) && (e.keyCode == 13)) { dialogclose(1); } }
         function p13uploadFile() { setDialogMode(2, "Upload File", 3, p13uploadFileEx, '<input type=file name=files id=p13uploadinput style=width:100% multiple=multiple onchange="updateUploadDialogOk(\'p13uploadinput\')" />'); updateUploadDialogOk('p13uploadinput'); }
@@ -1987,7 +2044,7 @@
             gdownloadFile = { path: decodeURIComponent(x), file: decodeURIComponent(y), size: z, tsize: 0, data: '', state: 0, id: Math.random(), tag: tag }
             //console.log('p13downloadFileCancel', gdownloadFile);
             files.sendText({ action: 'download', sub: 'start', id: gdownloadFile.id, path: gdownloadFile.path });
-            setDialogMode(2, "Download File", 10, p13downloadFileCancel, '<div>' + gdownloadFile.file + '</div><br /><progress id=d2progressBar style=width:100% value=0 max=' + z + ' />');
+            setDialogMode(2, "Download File", 10, p13downloadFileCancel, '<div>' + EscapeHtml(gdownloadFile.file) + '</div><br /><progress id=d2progressBar style=width:100% value=0 max=' + z + ' />');
         }
 
         // Called by the html page to cancel the download
@@ -2013,6 +2070,8 @@
                 if (gdownloadFile.tag == 'viewer') {
                     // View the file in the dialog box
                     setDialogMode(4, EscapeHtml(gdownloadFile.file), 3, p13editSaveBack, null, gdownloadFile.file);
+                    QV('d4EncodingButton', true);
+                    QV('d4LineBreakButton', true);
                     QS('dialog').width = 'auto';
                     QS('dialog').bottom = '80px';
                     QS('dialog').top = QS('dialog').left = QS('dialog').right = '100px';
@@ -2029,6 +2088,9 @@
 
         var d4EditWrapVal = 0;
         var d4EditSizeVal = 0;
+        var d4EditEncodingVal = 0;
+        var d4EditLineBreakVal = 0;
+
         function d4ToggleWrap(update) {
             if (!update) { d4EditWrapVal = ++d4EditWrapVal % 2; }
             Q('d4WrapButton').value = ["Wrap: ON", "Wrap: OFF"][d4EditWrapVal];
@@ -2044,8 +2106,38 @@
             putstore('editorSize', d4EditSizeVal);
         }
 
+        function d4ToggleEncoding(update) {
+            if (!update) {
+                d4EditEncodingVal = ++d4EditEncodingVal % 2;
+                if (d4EditEncodingVal == 1) {
+                    Q('d4editorarea').value = decode_utf8(Q('d4editorarea').value);
+                } else {
+                    Q('d4editorarea').value = encode_utf8(Q('d4editorarea').value);
+                }
+            }
+            Q('d4EncodingButton').value = ["Encoding: RAW","Encoding: UTF8"][d4EditEncodingVal];
+            putstore('editorEncoding', d4EditEncodingVal);
+        }
+
+        function d4ToggleLineBreak(update) {
+            if (!update) {
+                d4EditLineBreakVal = ++d4EditLineBreakVal % 3;
+            }
+            Q('d4LineBreakButton').value = ["Line Break: Windows (CR LF)","Line Break: Linux (LF)","Line Break: Mac (CR)"][d4EditLineBreakVal];
+            putstore('editorLineBreak', d4EditLineBreakVal);
+        }
+
         function p13editSaveBack(b, tag) {
-            var data = new TextEncoder().encode(Q('d4editorarea').value);
+            var data;
+            var value = Q('d4editorarea').value;
+            value = d4EditLineBreakVal === 0 ? value.replace(/\r?\n|\r/g, '\r\n') : // Windows
+                    d4EditLineBreakVal === 2 ? value.replace(/\r\n|\n/g, '\r') : // Mac
+                    value.replace(/\r\n|\r/g, '\n'); // Linux
+            if (d4EditEncodingVal == 1) {
+                data = new TextEncoder().encode(value); // UTF8 encoding
+            } else {
+                data = new TextEncoder().encode(decode_utf8(value)); // RAW encoding
+            }
             p13uploadFileContinue(1, [{ name: tag, size: data.byteLength, type: 'text/plain', xdata: data }]);
         }
 
@@ -2099,7 +2191,7 @@
             if (uploadFile.xfiles.length > uploadFile.xfilePtr) {
                 uploadFile.xptr = 0;
                 var file = uploadFile.xfiles[uploadFile.xfilePtr];
-                QH('p13dfileName', file.name);
+                QH('p13dfileName', EscapeHtml(file.name));
                 Q('d2progressBar').max = file.size;
                 Q('d2progressBar').value = 0;
                 if (file.xdata == null) {
@@ -2176,7 +2268,7 @@
             if (start >= data.byteLength) {
                 files.sendText(JSON.stringify({ action: 'uploaddone', reqid: uploadFile.xfilePtr }));
             } else {
-                var end = uploadFile.xptr + 16384;
+                var end = uploadFile.xptr + 65536;
                 if (end > data.byteLength) { if (dataPriming == true) { return; } end = data.byteLength; }
                 var dataslice = new Uint8Array(data.slice(start, end))
                 if ((dataslice[0] == 123) || (dataslice[0] == 0)) {
@@ -2206,7 +2298,16 @@
 
         // Display a dialog box
         // Parameters: Dialog Mode (0 = none), Dialog Title, Buttons (1 = OK, 2 = Cancel, 3 = OK & Cancel), Call back function(0 = Cancel, 1 = OK), Dialog Content (Mode 2 only)
+        // A dialog opening over the shared desktop swallows the in-flight key-up (ondockeyup gates on
+        // xxdialogMode), leaving the key held on the remote where Wayland auto-repeats it (e.g. Ctrl+V
+        // opening the Clipboard dialog pastes "vvvv..."). Release held keys before the dialog opens, and
+        // on window blur. No GrabKeyInput pause/resume here: the page-level ondockey* handlers gate on
+        // xxdialogMode, so re-grabbing would double-forward keys.
+        function deskDialogReleaseKeys() { if (!xxdialogMode && desktop && desktop.m && desktop.m.handleReleaseKeys && Q('DeskControl') && isInputAllowed()) { desktop.m.handleReleaseKeys(); } }
+        function ondocblur() { if (desktop && desktop.m && desktop.m.handleReleaseKeys && Q('DeskControl') && isInputAllowed()) { return desktop.m.handleReleaseKeys(); } }
+
         function setDialogMode(x, y, b, f, c, tag) {
+            if (x) { deskDialogReleaseKeys(); }
             xxdialogMode = x;
             xxdialogFunc = f;
             xxdialogButtons = b;
@@ -2243,6 +2344,27 @@
             xxcurrentView = x;
         }
 
+        function putstore(name, val) {
+            try {
+                if ((typeof (localStorage) === 'undefined') || (localStorage.getItem(name) == val)) return;
+                if (val == null) { localStorage.removeItem(name); } else { localStorage.setItem(name, val); }
+            } catch (ex) { }
+            if (name[0] != '_') {
+                var s = {};
+                try {
+                    for (var i = 0, len = localStorage.length; i < len; ++i) {
+                        var k = localStorage.key(i);
+                        if (k[0] != '_') {
+                            s[k] = localStorage.getItem(k);
+                            if ((k != 'desktopsettings') && (k != 'stars') && (k != 'deskKeyShortcuts') && (k != 'deskStrings') && (k != 'cmdopt') && (typeof s[k] == 'string') && (s[k].length > 64)) { delete s[k]; }
+                        }
+                    }
+                } catch (ex) {}
+                // meshserver.send({ action: 'userWebState', state: JSON.stringify(s) });
+            }
+        }
+
+        function getstore(name, val) { try { if (typeof (localStorage) === 'undefined') return val; var v = localStorage.getItem(name); if ((v == null) || (v == null)) return val; return v; } catch (e) { return val; } }
         function messagebox(t, m) { setSessionActivity(); QH('id_dialogMessage', m); setDialogMode(1, t, 1); }
         function statusbox(t, m) { setSessionActivity(); QH('id_dialogMessage', m); setDialogMode(1, t); }
         function haltEvent(e) { if (e.preventDefault) e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); return false; }
@@ -2255,22 +2377,28 @@
         function printFlexDateTime(d) { if (printDate(new Date()) == printDate(d)) { return format("Expires at {0}", printTime(d)); } else { return format("Expires {0}", printDateTime(d)); } }
         function getFileSizeStr(size) { if (typeof size != 'number') { size = 0; } if (size == 1) return "1 byte"; return format("{0} bytes", size); }
         function encodeURIComponentEx(txt) { return encodeURIComponent(txt).replace(/'/g, '%27'); };
-        function joinPaths() { var x = []; for (var i in arguments) { var w = arguments[i]; if ((w != null) && (w != '')) { while (w.endsWith('/') || w.endsWith('\\')) { w = w.substring(0, w.length - 1); } while (w.startsWith('/') || w.startsWith('\\')) { w = w.substring(1); } x.push(w); } } return x.join('/'); }
         function focusTextBox(x) { setTimeout(function () { Q(x).selectionStart = Q(x).selectionEnd = 65535; Q(x).focus(); }, 0); }
         var isFilenameValid = (function () { var x1 = /^[^\\/:\*\?"<>\|]+$/, x2 = /^\./, x3 = /^(nul|prn|con|lpt[0-9]|com[0-9])(\.|$)/i; return function isFilenameValid(fname) { return x1.test(fname) && !x2.test(fname) && !x3.test(fname) && (fname[0] != '.'); } })();
 
-        // Webkit seems to have a problem with "download" tag causing "network error", but openning the download in a hidden frame fixes it.
-        // So we do that for all browsers except FireFox
         function downloadFile(link, name, closeDialog) {
-            var element = document.createElement('a');
-            element.setAttribute('href', link);
-            element.setAttribute('rel', 'noreferrer noopener');
-            element.setAttribute('target', 'fileDownloadFrame');
-            if (navigator.userAgent.indexOf('Firefox') >= 0) { element.setAttribute('download', decodeURIComponent(name ? name : '')); }
+            var element = document.createElement('iframe');
+            element.style.cssText = 'display:none;width:0;height:0;border:0;visibility:hidden;';
+            element.src = link;
             document.body.appendChild(element);
-            element.click();
-            document.body.removeChild(element);
+            setTimeout(function() { try { if (element.parentNode) { document.body.removeChild(element); } } catch(e) { } }, 10000);
             if (closeDialog) { setDialogMode(0); }
+        }
+
+        // Device file downloads are posted so the share cookie stays out of the URL, the browser history and proxy logs.
+        function p13downloadDeviceFile(path) {
+            var form = document.createElement('form'), iframe = document.createElement('iframe');
+            iframe.name = 'p13dl' + Math.random().toString(36).substring(2);
+            iframe.style.cssText = 'display:none;width:0;height:0;border:0;visibility:hidden;';
+            form.method = 'post'; form.action = 'devicefile.ashx'; form.target = iframe.name; form.style.display = 'none';
+            var fields = { c: authCookie, f: decodeURIComponent(path) };
+            for (var i in fields) { var input = document.createElement('input'); input.type = 'hidden'; input.name = i; input.value = fields[i]; form.appendChild(input); }
+            document.body.appendChild(iframe); document.body.appendChild(form); form.submit();
+            setTimeout(function () { try { document.body.removeChild(form); document.body.removeChild(iframe); } catch (e) { } }, 10000);
         }
 
         start();

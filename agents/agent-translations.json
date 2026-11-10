@@ -4,7 +4,7 @@
     "agentVersion": "New Version",
     "group": "Device Group",
     "url": "Server URL",
-    "meshName": "Mesh Name",
+    "meshName": "Group Name",
     "meshId": "Group Identifier",
     "serverId": "Server Identifier",
     "setup": "Setup",
@@ -28,16 +28,17 @@
       "NOT RUNNING"
     ],
     "statusDescription": "Current Agent Status",
-    "description": "Click the buttons below to install or uninstall this remote management software. When installed, this software runs in the background allowing this computer to be managed and controlled by a remote administrator."
+    "description": "Click the buttons below to install or uninstall this remote management software. When installed, this software runs in the background allowing this computer to be managed and controlled by a remote administrator.",
+    "connectionDetailsButton": "Connection Details..."
   },
   "cs": {
     "agent": "Agent",
     "group": "Skupina zařízení",
     "url": "URL serveru",
-    "meshName": "Název oka",
+    "meshName": "Skupinové jméno",
     "meshId": "Identifikátor skupiny",
     "serverId": "Identifikátor serveru",
-    "setup": "Založit",
+    "setup": "Nastavit",
     "update": "Aktualizace",
     "install": "Instalace",
     "uninstall": "Odinstalace",
@@ -52,24 +53,25 @@
     "zenity": "Zkuste nainstalovat / aktualizovat Zenity a spustit znovu",
     "status": [
       "NENÍ INSTALOVÁN",
-      "BĚH",
+      "SPUŠTĚNO",
       "NEFUNGUJE"
     ],
     "statusDescription": "Aktuální stav agenta",
     "agentVersion": "Nová verze",
     "elevation": "K instalaci/odinstalaci tohoto softwaru jsou vyžadována zvýšená oprávnění.",
     "graphicalerror": "Na tomto systému nelze spustit grafickou verzi tohoto instalačního programu",
-    "description": "Klepnutím na tlačítka níže nainstalujete nebo odinstalujete tento software pro vzdálenou správu. Když je tento software nainstalován, běží na pozadí, což umožňuje spravovat a ovládat tento počítač vzdáleným správcem."
+    "description": "Klepnutím na tlačítka níže nainstalujete nebo odinstalujete tento software pro vzdálenou správu. Když je tento software nainstalován, běží na pozadí, což umožňuje spravovat a ovládat tento počítač vzdáleným správcem.",
+    "connectionDetailsButton": "Podrobnosti o připojení..."
   },
   "de": {
     "agent": "Agent",
     "group": "Gerätegruppe",
     "url": "Server-URL",
-    "meshName": "Maschenname",
+    "meshName": "Gruppenname",
     "meshId": "Gruppen-ID",
     "serverId": "Server-ID",
     "setup": "Konfiguration",
-    "update": "Updates",
+    "update": "Aktualisierung",
     "install": "Installieren",
     "uninstall": "Deinstallation",
     "connect": "Verbinden",
@@ -86,17 +88,19 @@
       "GESTARTET",
       "NICHT GESTARTET"
     ],
-    "statusDescription": "Aktueller Agentenstatus",
+    "statusDescription": "Aktueller Agentstatus",
     "agentVersion": "Neue Version",
     "elevation": "Zum Installieren/Deinstallieren dieser Software sind erhöhte Berechtigungen erforderlich.",
     "graphicalerror": "Die grafische Version dieses Installationsprogramms kann auf diesem System nicht ausgeführt werden",
-    "description": "Klicken Sie auf die Schaltflächen unten, um diese Fernverwaltungssoftware zu installieren oder zu deinstallieren. Nach der Installation wird diese Software im Hintergrund ausgeführt, sodass dieser Computer von einem entfernten Administrator verwaltet und gesteuert werden kann."
+    "description": "Klicken Sie auf die Schaltflächen unten, um diese Fernverwaltungssoftware zu installieren oder zu deinstallieren. Nach der Installation wird diese Software im Hintergrund ausgeführt, sodass dieser Computer von einem entfernten Administrator verwaltet und gesteuert werden kann.",
+    "connectionDetailsButton": "Verbindungsinformationen...",
+    "connectionDetailsTitle": "Verbindungsinformationen"
   },
   "es": {
     "agent": "Agente",
     "group": "Grupo de Dispositivos",
     "url": "URL del servidor",
-    "meshName": "Nombre de malla",
+    "meshName": "Nombre del grupo",
     "meshId": "Identificador del Grupo",
     "serverId": "Identificador de Servidor",
     "setup": "Preparar",
@@ -121,13 +125,14 @@
     "agentVersion": "Nueva versión",
     "elevation": "Se requieren permisos elevados para instalar/desinstalar este software.",
     "graphicalerror": "La versión gráfica de este instalador no puede ejecutarse en este sistema",
-    "description": "Haga clic en los botones a continuación para instalar o desinstalar este software de administración remota. Cuando se instala, este software se ejecuta en segundo plano, lo que permite que un administrador remoto administre y controle esta computadora."
+    "description": "Haga clic en los botones a continuación para instalar o desinstalar este software de administración remota. Cuando se instala, este software se ejecuta en segundo plano, lo que permite que un administrador remoto administre y controle esta computadora.",
+    "connectionDetailsButton": "Detalles de conexión..."
   },
   "fi": {
     "agent": "Agentti",
     "group": "Laiteryhmä",
     "url": "Palvelimen URL-osoite",
-    "meshName": "Verkon nimi",
+    "meshName": "Ryhmän nimi",
     "meshId": "Ryhmän tunniste",
     "serverId": "Palvelimen tunniste",
     "setup": "Perustaa",
@@ -152,13 +157,14 @@
     "agentVersion": "Uusi versio",
     "elevation": "Tämän ohjelmiston asentaminen/asennuksen poistaminen edellyttää korotettuja käyttöoikeuksia.",
     "graphicalerror": "Tämän asennusohjelman graafista versiota ei voi käyttää tässä järjestelmässä",
-    "description": "Napsauta alla olevia painikkeita asentaaksesi tai poistaaksesi tämän etähallintaohjelmiston. Kun ohjelmisto on asennettu, se toimii taustalla, jolloin etäjärjestelmänvalvoja voi hallita ja ohjata tätä tietokonetta."
+    "description": "Napsauta alla olevia painikkeita asentaaksesi tai poistaaksesi tämän etähallintaohjelmiston. Kun ohjelmisto on asennettu, se toimii taustalla, jolloin etäjärjestelmänvalvoja voi hallita ja ohjata tätä tietokonetta.",
+    "connectionDetailsButton": "Yhteyden tiedot..."
   },
   "fr": {
     "agent": "Agent",
     "group": "Groupe d'appareils",
     "url": "URL du serveur",
-    "meshName": "Nom du maillage",
+    "meshName": "Nom du groupe",
     "meshId": "Identifiant de groupe",
     "serverId": "Identifiant du serveur",
     "setup": "Configuration",
@@ -177,19 +183,20 @@
     "status": [
       "PAS INSTALLÉ",
       "FONCTIONNEMENT",
-      "NE PAS COURRIR"
+      "PAS EN FONCTIONNEMENT"
     ],
     "statusDescription": "Statut actuel de l'agent",
     "agentVersion": "Nouvelle version",
     "elevation": "Des autorisations élevées sont requises pour installer/désinstaller ce logiciel.",
     "graphicalerror": "La version graphique de ce programme d'installation ne peut pas s'exécuter sur ce système",
-    "description": "Cliquez sur les boutons ci-dessous pour installer ou désinstaller ce logiciel de gestion à distance. Une fois installé, ce logiciel s'exécute en arrière-plan, ce qui permet à cet ordinateur d'être géré et contrôlé par un administrateur distant."
+    "description": "Cliquez sur les boutons ci-dessous pour installer ou désinstaller ce logiciel de gestion à distance. Une fois installé, ce logiciel s'exécute en arrière-plan, ce qui permet à cet ordinateur d'être géré et contrôlé par un administrateur distant.",
+    "connectionDetailsButton": "Détails de la connexion..."
   },
   "hi": {
     "agent": "एजेंट",
     "group": "डिवाइस समूह",
     "url": "सर्वर URL",
-    "meshName": "मेष नाम",
+    "meshName": "समूह नाम",
     "meshId": "समूह पहचानकर्ता",
     "serverId": "सर्वर पहचानकर्ता",
     "setup": "सेट अप",
@@ -214,13 +221,14 @@
     "agentVersion": "नया संस्करण",
     "elevation": "इस सॉफ़्टवेयर को स्थापित/अनइंस्टॉल करने के लिए उन्नत अनुमतियों की आवश्यकता होती है।",
     "graphicalerror": "इस इंस्टालर का आलेखीय संस्करण इस सिस्टम पर नहीं चल सकता",
-    "description": "इस दूरस्थ प्रबंधन सॉफ़्टवेयर को स्थापित या अनइंस्टॉल करने के लिए नीचे दिए गए बटनों पर क्लिक करें। स्थापित होने पर, यह सॉफ़्टवेयर पृष्ठभूमि में चलता है जिससे इस कंप्यूटर को दूरस्थ व्यवस्थापक द्वारा प्रबंधित और नियंत्रित किया जा सकता है।"
+    "description": "इस दूरस्थ प्रबंधन सॉफ़्टवेयर को स्थापित या अनइंस्टॉल करने के लिए नीचे दिए गए बटनों पर क्लिक करें। स्थापित होने पर, यह सॉफ़्टवेयर पृष्ठभूमि में चलता है जिससे इस कंप्यूटर को दूरस्थ व्यवस्थापक द्वारा प्रबंधित और नियंत्रित किया जा सकता है।",
+    "connectionDetailsButton": "कनेक्शन विवरण..."
   },
   "it": {
     "agent": "Agente",
     "group": "Gruppo di dispositivi",
     "url": "URL del server",
-    "meshName": "Nome mesh",
+    "meshName": "Nome del gruppo",
     "meshId": "Identificatore di gruppo",
     "serverId": "Identificatore del server",
     "setup": "Impostare",
@@ -245,13 +253,14 @@
     "agentVersion": "Nuova versione",
     "elevation": "Per installare/disinstallare questo software sono necessarie autorizzazioni elevate.",
     "graphicalerror": "La versione grafica di questo programma di installazione non può essere eseguita su questo sistema",
-    "description": "Fare clic sui pulsanti seguenti per installare o disinstallare questo software di gestione remota. Una volta installato, questo software viene eseguito in background consentendo a questo computer di essere gestito e controllato da un amministratore remoto."
+    "description": "Fare clic sui pulsanti seguenti per installare o disinstallare questo software di gestione remota. Una volta installato, questo software viene eseguito in background consentendo a questo computer di essere gestito e controllato da un amministratore remoto.",
+    "connectionDetailsButton": "Dettagli di connessione..."
   },
   "ja": {
     "agent": "エージェント",
     "group": "デバイスグループ",
     "url": "サーバーのURL",
-    "meshName": "メッシュ名",
+    "meshName": "그룹 이름",
     "meshId": "グループ識別子",
     "serverId": "サーバー識別子",
     "setup": "セットアップ",
@@ -276,13 +285,14 @@
     "agentVersion": "新しいバージョン",
     "elevation": "このソフトウェアをインストール/アンインストールするには、昇格された権限が必要です。",
     "graphicalerror": "このインストーラーのグラフィカルバージョンは、このシステムでは実行できません",
-    "description": "このリモート管理ソフトウェアをインストールまたはアンインストールするには、下のボタンをクリックしてください。インストールすると、このソフトウェアはバックグラウンドで実行され、リモート管理者がこのコンピューターを管理および制御できるようになります。"
+    "description": "このリモート管理ソフトウェアをインストールまたはアンインストールするには、下のボタンをクリックしてください。インストールすると、このソフトウェアはバックグラウンドで実行され、リモート管理者がこのコンピューターを管理および制御できるようになります。",
+    "connectionDetailsButton": "接続の詳細..."
   },
   "ko": {
     "agent": "에이전트",
     "group": "장치 그룹",
     "url": "서버의 위치",
-    "meshName": "메시의 이름",
+    "meshName": "그룹 이름",
     "meshId": "그룹 식별자",
     "serverId": "서버의 식별자",
     "setup": "설정하다",
@@ -303,13 +313,18 @@
       "운영",
       "중지됨"
     ],
-    "statusDescription": "에이전트 상태"
+    "statusDescription": "에이전트 상태",
+    "agentVersion": "새로운 버전",
+    "elevation": "이 소프트웨어를 설치/제거하려면 높은 권한이 필요합니다.",
+    "graphicalerror": "이 설치 프로그램의 그래픽 버전은 이 시스템에서 실행할 수 없습니다.",
+    "description": "이 원격 관리 소프트웨어를 설치하거나 제거하려면 아래 버튼을 클릭하십시오. 이 소프트웨어를 설치하면 백그라운드에서 실행되어 원격 관리자가 이 컴퓨터를 관리하고 제어할 수 있습니다.",
+    "connectionDetailsButton": "연결 세부정보..."
   },
   "nl": {
     "agent": "Agent",
     "group": "Apparaat groep",
     "url": "Server URL",
-    "meshName": "Mesh naam",
+    "meshName": "Groepsnaam",
     "meshId": "Groepsidentificatie",
     "serverId": "Server identificatie",
     "setup": "Setup",
@@ -334,13 +349,14 @@
     "agentVersion": "Nieuwe versie",
     "elevation": "Verhoogde machtigingen zijn vereist om deze software te installeren/verwijderen.",
     "graphicalerror": "De grafische versie van dit installatieprogramma kan niet op dit systeem draaien",
-    "description": "Klik op de onderstaande knoppen om deze software voor beheer op afstand te installeren of te verwijderen. Na installatie draait deze software op de achtergrond waardoor deze computer kan worden beheerd en gecontroleerd door een externe beheerder."
+    "description": "Klik op de onderstaande knoppen om deze software voor beheer op afstand te installeren of te verwijderen. Na installatie draait deze software op de achtergrond waardoor deze computer kan worden beheerd en gecontroleerd door een externe beheerder.",
+    "connectionDetailsButton": "Verbindingsdetails..."
   },
   "pt": {
     "agent": "Agente",
     "group": "Grupo de dispositivos",
     "url": "URL do servidor",
-    "meshName": "Nome da malha",
+    "meshName": "Nome do grupo",
     "meshId": "Identificador de Grupo",
     "serverId": "Identificador de Servidor",
     "setup": "Configuração",
@@ -361,13 +377,18 @@
       "CORRIDA",
       "NÃO CORRENDO"
     ],
-    "statusDescription": "Status atual do agente"
+    "statusDescription": "Status atual do agente",
+    "agentVersion": "Nova versão",
+    "elevation": "Permissões elevadas são necessárias para instalar/desinstalar este software.",
+    "graphicalerror": "A versão gráfica deste instalador não pode ser executada neste sistema",
+    "description": "Clique nos botões abaixo para instalar ou desinstalar este software de gerenciamento remoto. Quando instalado, este software é executado em segundo plano, permitindo que este computador seja gerenciado e controlado por um administrador remoto.",
+    "connectionDetailsButton": "Detalhes da conexão..."
   },
   "ru": {
     "agent": "Агент",
-    "group": "Группа устройства",
+    "group": "Группа устройств",
     "url": "URL-адрес сервера",
-    "meshName": "Имя сетки",
+    "meshName": "Имя Группы",
     "meshId": "Идентификатор группы",
     "serverId": "Идентификатор сервера",
     "setup": "Настроить",
@@ -388,13 +409,18 @@
       "ЗАПУЩЕН",
       "НЕ ЗАПУЩЕН"
     ],
-    "statusDescription": "Текущий статус агента"
+    "statusDescription": "Текущий статус агента",
+    "agentVersion": "Новая версия",
+    "elevation": "Для установки/удаления этого программного обеспечения требуются повышенные права.",
+    "graphicalerror": "Графическая версия этого установщика не может быть запущена в этой системе.",
+    "description": "Нажмите кнопки ниже, чтобы установить или удалить это программное обеспечение для удаленного управления..После установки это программное обеспечение работает в фоновом режиме, что позволяет удаленному администратору управлять этим компьютером.",
+    "connectionDetailsButton": "Подробности подключения..."
   },
   "sv": {
     "agent": "Agent",
     "group": "Enhetsgrupp",
     "url": "Serverns URL",
-    "meshName": "Masknamn",
+    "meshName": "Grupp namn",
     "meshId": "Gruppidentifierare",
     "serverId": "Serveridentifierare",
     "setup": "Uppstart",
@@ -415,13 +441,18 @@
       "LÖPNING",
       "SPRINGER INTE"
     ],
-    "statusDescription": "Aktuell agentstatus"
+    "statusDescription": "Aktuell agentstatus",
+    "agentVersion": "Ny version",
+    "elevation": "Förhöjda behörigheter krävs för att installera/avinstallera denna programvara.",
+    "graphicalerror": "Den grafiska versionen av detta installationsprogram kan inte köras på det här systemet",
+    "description": "Klicka på knapparna nedan för att installera eller avinstallera denna fjärrhanteringsprogramvara. När den är installerad körs den här programvaran i bakgrunden så att den här datorn kan hanteras och kontrolleras av en fjärradministratör.",
+    "connectionDetailsButton": "Anslutningsdetaljer..."
   },
   "tr": {
     "agent": "Agent",
     "group": "Cihaz Grubu",
     "url": "Sunucu URL'si",
-    "meshName": "Mesh Adı",
+    "meshName": "Grup ismi",
     "meshId": "Grup Tanımlayıcı",
     "serverId": "Sunucu Tanımlayıcı",
     "setup": "Kurmak",
@@ -446,17 +477,18 @@
     "agentVersion": "Yeni sürüm",
     "elevation": "Bu yazılımı yüklemek/kaldırmak için yüksek izinler gerekir.",
     "graphicalerror": "Bu yükleyicinin grafik sürümü bu sistemde çalışamaz",
-    "description": "Bu uzaktan yönetim yazılımını yüklemek veya kaldırmak için aşağıdaki düğmelere tıklayın. Yüklendiğinde, bu yazılım arka planda çalışır ve bu bilgisayarın uzak bir yönetici tarafından yönetilmesine ve kontrol edilmesine olanak tanır."
+    "description": "Bu uzaktan yönetim yazılımını yüklemek veya kaldırmak için aşağıdaki düğmelere tıklayın. Yüklendiğinde, bu yazılım arka planda çalışır ve bu bilgisayarın uzak bir yönetici tarafından yönetilmesine ve kontrol edilmesine olanak tanır.",
+    "connectionDetailsButton": "Bağlantı ayrıntıları..."
   },
   "zh-chs": {
     "agent": "代理",
     "group": "设备组",
     "url": "服务器网址",
-    "meshName": "网格名称",
+    "meshName": "团队名字",
     "meshId": "组标识符",
     "serverId": "服务器标识符",
     "setup": "设定",
-    "update": "更新资料",
+    "update": "更新",
     "install": "安装",
     "uninstall": "卸载",
     "connect": "连接",
@@ -473,13 +505,18 @@
       "正在运行",
       "不在运行"
     ],
-    "statusDescription": "当前代理状态"
+    "statusDescription": "当前代理状态",
+    "agentVersion": "新版本",
+    "elevation": "安装/卸载此软件需要提升权限。",
+    "graphicalerror": "此安装程序的图形版本无法在此系统上运行",
+    "description": "单击下面的按钮以安装或卸载此远程管理软件。安装后，该软件在后台运行，允许远程管理员管理和控制该计算机。",
+    "connectionDetailsButton": "连接详情..."
   },
   "zh-cht": {
     "agent": "代理",
     "group": "裝置群",
     "url": "服務器網址",
-    "meshName": "網格名稱",
+    "meshName": "團隊名字",
     "meshId": "群標識符",
     "serverId": "服務器標識符",
     "setup": "設定",
@@ -500,13 +537,18 @@
       "正在運行",
       "不在運行"
     ],
-    "statusDescription": "當前代理狀態"
+    "statusDescription": "當前代理狀態",
+    "agentVersion": "新版本",
+    "elevation": "安裝/卸載此軟件需要提升權限。",
+    "graphicalerror": "此安裝程序的圖形版本無法在此系統上運行",
+    "description": "單擊下面的按鈕以安裝或卸載此遠程管理軟件。安裝後，該軟件在後台運行，允許遠程管理員管理和控制該計算機。",
+    "connectionDetailsButton": "連接詳情..."
   },
   "da": {
     "agent": "Agent",
     "group": "Enhedsgruppe",
     "url": "Server URL",
-    "meshName": "Mesh Navn",
+    "meshName": "Gruppe navn",
     "meshId": "Gruppe-id",
     "serverId": "Serveridentifikator",
     "setup": "Opsætning",
@@ -531,13 +573,14 @@
     "agentVersion": "Ny version",
     "elevation": "Forhøjede tilladelser er nødvendige for at installere/afinstallere denne software.",
     "graphicalerror": "Den grafiske version af dette installationsprogram kan ikke køre på dette system",
-    "description": "Klik på knapperne nedenfor for at installere eller afinstallere denne fjernstyringssoftware. Når den er installeret, kører denne software i baggrunden, så denne computer kan administreres og kontrolleres af en fjernadministrator."
+    "description": "Klik på knapperne nedenfor for at installere eller afinstallere denne fjernstyringssoftware. Når den er installeret, kører denne software i baggrunden, så denne computer kan administreres og kontrolleres af en fjernadministrator.",
+    "connectionDetailsButton": "Forbindelsesdetaljer..."
   },
   "pl": {
     "agent": "Agent",
     "group": "Grupa Urządzeń",
     "url": "URL Serwera",
-    "meshName": "Nazwa Sieci",
+    "meshName": "Nazwa Grupy",
     "meshId": "Identyfikator Grupy",
     "serverId": "Identyfikator Serwera",
     "setup": "Konfiguracja",
@@ -562,13 +605,14 @@
     "agentVersion": "Nowa Wersja",
     "elevation": "Do zainstalowania/odinstalowania tego oprogramowania wymagane są podwyższone uprawnienia.",
     "graphicalerror": "Graficzna wersja tego instalatora nie może być uruchomiona w tym systemie",
-    "description": "Kliknij poniższe przyciski, aby zainstalować lub odinstalować oprogramowanie zdalnego dostępu. Po zainstalowaniu, to oprogramowanie działa w tle, umożliwiając zarządzanie i kontrolowanie tego komputera przez zdalnego administratora."
+    "description": "Kliknij poniższe przyciski, aby zainstalować lub odinstalować oprogramowanie zdalnego dostępu. Po zainstalowaniu, to oprogramowanie działa w tle, umożliwiając zarządzanie i kontrolowanie tego komputera przez zdalnego administratora.",
+    "connectionDetailsButton": "Szczegóły połączenia..."
   },
   "pt-br": {
     "agent": "Agente",
     "group": "Grupo de Dispositivos",
     "url": "URL do servidor",
-    "meshName": "Nome Mesh",
+    "meshName": "Nome do grupo",
     "meshId": "Identificador de Grupo",
     "serverId": "Identificador de Servidor",
     "setup": "Configurar",
@@ -589,6 +633,139 @@
       "Executando",
       "NÃO EXECUTANDO"
     ],
-    "statusDescription": "Status atual do agente"
+    "statusDescription": "Status atual do agente",
+    "agentVersion": "Nova Versão",
+    "elevation": "Permissões Elevadas são necessárias para instalar/desinstalar este software",
+    "graphicalerror": "A versão gráfica do instalador não pode ser executada neste sistema",
+    "description": "Clique nos botões abaixo para instalar ou desinstalar  este software de gerenciamento remoto. Quando instalado, este software é executado em segundo plano permitindo que este computador seja gerenciado e controlado por um administrador remoto",
+    "connectionDetailsButton": "Detalhes da conexão..."
+  },
+  "bs": {
+    "agent": "Agent",
+    "agentVersion": "Nova verzija",
+    "group": "Grupa uređaja",
+    "url": "URL servera",
+    "meshName": "Ime grupe",
+    "meshId": "Grupni identifikator",
+    "serverId": "Identifikator servera",
+    "setup": "Postaviti",
+    "update": "Ažuriraj",
+    "install": "Instaliraj",
+    "uninstall": "Deinstalirati",
+    "connect": "Povežite se",
+    "disconnect": "Prekini vezu",
+    "cancel": "Otkaži",
+    "close": "Zatvori",
+    "pressok": "Pritisnite OK da prekinete vezu",
+    "elevation": "Za instaliranje/deinstaliranje ovog softvera potrebne su povišene dozvole.",
+    "sudo": "Molimo pokušajte ponovo sa sudo.",
+    "ctrlc": "Pritisnite Ctrl-C za izlaz.",
+    "commands": "Možete pokrenuti tekstualnu verziju iz komandne linije sa sljedećim naredbama",
+    "graphicalerror": "Grafička verzija ovog instalatera ne može da radi na ovom sistemu",
+    "zenity": "Pokušajte instalirati/ažurirati Zenity i pokrenite ponovo",
+    "status": [
+      "NIJE INSTALIRANO",
+      "RUNNING",
+      "NOT RUNNING"
+    ],
+    "statusDescription": "Trenutni status agenta",
+    "description": "Kliknite na dugmad ispod da instalirate ili deinstalirate ovaj softver za daljinsko upravljanje. Kada je instaliran, ovaj softver radi u pozadini, što omogućava da ovim računarom upravlja i kontroliše udaljeni administrator.",
+    "connectionDetailsButton": "Detalji veze..."
+  },
+  "hu": {
+    "agent": "Agent",
+    "agentVersion": "Új verzió",
+    "group": "Eszköz csoport",
+    "url": "Kiszolgáló URL",
+    "meshName": "Csoport név",
+    "meshId": "Csoport azonosító",
+    "serverId": "Kiszolgáló azonosító",
+    "setup": "Beállítás",
+    "update": "Frissítés",
+    "install": "Telepítés",
+    "uninstall": "Eltávolítás",
+    "connect": "Kapcsolódás",
+    "disconnect": "Lekapcsolódás",
+    "cancel": "Mégse",
+    "close": "Bezár",
+    "pressok": "Press OK to disconnect",
+    "elevation": "A szoftver telepítéséhez/eltávolításához megnövelt jogosultságok szükségesek.",
+    "sudo": "Kérjük, próbálja meg újra a sudo használatával.",
+    "ctrlc": "A kilépéshez nyomja meg a Ctrl-C billentyűt.",
+    "commands": "A szöveges változatot a parancssorból futtathatja a következő parancs(okk)al",
+    "graphicalerror": "A telepítő grafikus verziója nem futtatható ezen a rendszeren.",
+    "zenity": "Próbálja meg telepíteni/frissíteni a Zenity-t, és indítsa újra",
+    "status": [
+      "NINCS TELEPÍTVE",
+      "FUT",
+      "NEM FUT"
+    ],
+    "statusDescription": "Jelenlegi agent állapota",
+    "description": "Kattintson a Telepítés vagy Eltávolítás gombokra a Távfelügyeleti alkalmazás telepítéséhez vagy eltávolításához. Telepítés után ez az alkalmazás a háttérben fut, lehetővé téve, hogy a számítógépet egy távoli rendszergazda kezelje.",
+    "connectionDetailsButton": "Kapcsolat részletei..."
+  },
+  "ca": {
+    "agent": "Agent",
+    "agentVersion": "Nova versió",
+    "group": "Grup de dispositius",
+    "url": "URL del servidor",
+    "meshName": "Nom del grup",
+    "meshId": "Identificador de grup",
+    "serverId": "Identificador del servidor",
+    "setup": "Configuració",
+    "update": "Actualització",
+    "install": "Instal·lar",
+    "uninstall": "Desinstal·la",
+    "connect": "Connecta't",
+    "disconnect": "Desconnecta",
+    "cancel": "Cancel · lar",
+    "close": "Tanca",
+    "pressok": "Premeu D'acord per desconnectar",
+    "elevation": "Es necessiten permisos elevats per instal·lar/desinstal·lar aquest programari.",
+    "sudo": "Si us plau, torna-ho a provar amb sudo.",
+    "ctrlc": "Premeu Ctrl-C per sortir.",
+    "commands": "Podeu executar la versió de text des de la línia d'ordres amb les següents ordres",
+    "graphicalerror": "La versió gràfica d'aquest instal·lador no pot executar-se en aquest sistema",
+    "zenity": "Proveu d'instal·lar/actualitzar Zenity i torneu a executar-lo",
+    "status": [
+      "NO ESTÀ INSTAL · LAT",
+      "CÓRRER",
+      "NO CORRE"
+    ],
+    "statusDescription": "Estat actual de l'agent",
+    "description": "Feu clic als botons següents per instal·lar o desinstal·lar aquest programari de gestió remota. Quan s'instal·la, aquest programari s'executa en segon pla i permet que aquest ordinador sigui gestionat i controlat per un administrador remot.",
+    "connectionDetailsButton": "Detalls de la connexió..."
+  },
+  "uk": {
+    "agent": "Агент",
+    "agentVersion": "Нова версія",
+    "group": "Група пристроїв",
+    "url": "URL Сервера",
+    "meshName": "Ім'я групи",
+    "meshId": "Ідентифікатор групи",
+    "serverId": "Ідентифікатор сервера",
+    "setup": "Налаштувати",
+    "update": "Оновити",
+    "install": "Інсталювати",
+    "uninstall": "Видалити",
+    "connect": "Підключитись",
+    "disconnect": "Відключити",
+    "cancel": "Скасувати",
+    "close": "Закрити",
+    "pressok": "Натисніть OK, щоб від'єднатись",
+    "elevation": "Для встановлення/видалення цієї програми потрібні права адміністратора.",
+    "sudo": "Будь ласка, спробуйте ще раз за допомогою sudo.",
+    "ctrlc": "Натисніть Ctrl-C, щоб вийти",
+    "commands": "Ви можете запустити текстову версію з командного рядка за допомогою таких команд",
+    "graphicalerror": "Графічна версія цього інсталятора не може запуститись в цій системі",
+    "zenity": "Спробуйте встановити або оновити Zenity, а тоді запустіть програму знову",
+    "status": [
+      "НЕ ВСТАНОВЛЕНО",
+      "ПРАЦЮЄ",
+      "НЕ ПРАЦЮЄ"
+    ],
+    "statusDescription": "Поточний статус Агента",
+    "description": "Щоб встановити або видалити це програмне забезпечення для віддаленого керування, скористайтеся кнопками нижче. Після інсталяції програма працютиме у фоновому режимі, що дозволить віддаленому адміністратору керувати цим комп'ютером. Підключення ж надасть тимчасовий доступ поки це вікно відкрите",
+    "connectionDetailsButton": "Деталі з'єднання..."
   }
 }

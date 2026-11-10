@@ -36,6 +36,7 @@ MNG_KVM_INIT_TOUCH = 14,
 MNG_KVM_TOUCH = 15,
 MNG_KVM_CONNECTCOUNT = 16,
 MNG_KVM_MESSAGE = 17,
+MNG_KVM_KEYSTATE = 18,
 MNG_ECHO = 21,
 MNG_JUMBO = 27,
 MNG_GETDIR = 50,
@@ -58,10 +59,11 @@ MNG_ENCAPSULATE_AGENT_COMMAND = 70,
 MNG_KVM_DISPLAY_INFO = 82
 */
 
-function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
+function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
     var obj = {};
-    obj.nodeid = nodeid;
-    obj.parent = parent;
+    obj.id = id;                        // Unique identifier for this session
+    obj.nodeid = nodeid;                // Remote device nodeid for this session
+    obj.parent = parent;                // Parent web server instance
     obj.agent = null;                   // Reference to the connection object that is the agent.
     obj.viewers = [];                   // Array of references to all viewers.
     obj.viewersOverflowCount = 0;       // Number of viewers currently in overflow state.
@@ -81,6 +83,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
     obj.lastData = null;                // Index in the images table of the last image in the table.
     obj.lastDisplayInfoData = null;     // Pointer to the last display information command from the agent (Number of displays).
     obj.lastDisplayLocationData = null; // Pointer to the last display location and size command from the agent.
+    obj.lastKeyState = null;            // Pointer to the last key state command from the agent.
     obj.desktopPaused = true;           // Current desktop pause state, it's true if all viewers are paused.
     obj.imageType = 1;                  // Current image type, 1 = JPEG, 2 = PNG, 3 = TIFF, 4 = WebP
     obj.imageCompression = 50;          // Current image compression, this is the highest value of all viewers.
@@ -177,10 +180,11 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
                 if (obj.lastDisplayInfoData != null) { obj.sendToViewer(peer, obj.lastDisplayInfoData); }
                 if (obj.lastDisplayLocationData != null) { obj.sendToViewer(peer, obj.lastDisplayLocationData); }
                 if (obj.lastConsoleMessage != null) { obj.sendToViewer(peer, obj.lastConsoleMessage); }
-
+                if (obj.lastKeyState != null) { obj.sendToViewer(peer, obj.lastKeyState); }
+                
                 // Log joining the multiplex session
                 if (obj.startTime != null) {
-                    var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, userid: peer.user ? peer.user._id : null, username: peer.user.name, msgid: 4, msg: "Joined desktop multiplex session", protocol: 2 };
+                    var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, userid: peer.user ? peer.user._id : null, username: peer.user.name, msgid: 143, msgArgs: [obj.id], msg: "Joined desktop multiplex session \"" + obj.id + "\"", protocol: 2 };
                     parent.parent.DispatchEvent(['*', obj.nodeid, peer.user._id, obj.meshid], obj, event);
                 }
 
@@ -208,7 +212,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
 
         // Log multiplex session start
         if ((obj.agent != null) && (obj.viewers.length > 0) && (obj.startTime == null)) {
-            var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, msgid: 6, msg: "Started desktop multiplex session", protocol: 2 };
+            var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, msgid: 145, msgArgs: [obj.id], msg: "Started desktop multiplex session \"" + obj.id + "\"", protocol: 2 };
             if (obj.viewers[0].user != null) { event.userid = obj.viewers[0].user._id; event.username = obj.viewers[0].user.name; }
             const targets = ['*', obj.nodeid, obj.meshid];
             if (obj.viewers[0].user != null) { targets.push(obj.viewers[0].user._id); }
@@ -288,7 +292,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
 
                 //var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, userid: peer.user._id, username: peer.user.name, msgid: 5, msg: "Left the desktop multiplex session", protocol: 2 };
                 const sessionSeconds = Math.floor((Date.now() - peer.startTime) / 1000);
-                var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, msgid: 122, msgArgs: [sessionSeconds], msg: "Left the desktop multiplex session after " + sessionSeconds + " second(s).", protocol: 2, bytesin: inTraffc, bytesout: outTraffc };
+                var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, msgid: 144, msgArgs: [obj.id, sessionSeconds], msg: "Left the desktop multiplex session \"" + obj.id + "\" after " + sessionSeconds + " second(s).", protocol: 2, bytesin: inTraffc, bytesout: outTraffc };
                 if (peer.user != null) { event.userid = peer.user._id; event.username = peer.user.name; }
                 if (peer.guestName) { event.guestname = peer.guestName; }
                 const targets = ['*', obj.nodeid, obj.meshid];
@@ -338,11 +342,11 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
                 parent.parent.fs.close(fd);
 
                 // Now that the recording file is closed, check if we need to index this file.
-                if (domain.sessionrecording.index !== false) { parent.parent.certificateOperations.acceleratorPerformOperation('indexMcRec', filename); }
+                if (domain.sessionrecording.index && domain.sessionrecording.index !== false) { parent.parent.certificateOperations.acceleratorPerformOperation('indexMcRec', filename); }
 
                 // Add a event entry about this recording
                 var basefile = parent.parent.path.basename(filename);
-                var event = { etype: 'relay', action: 'recording', domain: domain.id, nodeid: obj.nodeid, msgid: 7, msgArgs: [obj.sessionLength], msg: "Finished recording session" + (obj.sessionLength ? (', ' + obj.sessionLength + ' second(s)') : ''), filename: basefile, size: obj.recordingFileSize, protocol: 2, icon: obj.icon, name: obj.name, meshid: obj.meshid, userids: obj.userIds, multiplex: true };
+                var event = { etype: 'relay', action: 'recording', domain: domain.id, nodeid: obj.nodeid, msgid: 146, msgArgs: [obj.id, obj.sessionLength], msg: "Finished recording session \"" + obj.id + "\", " + obj.sessionLength + " second(s)", filename: basefile, size: obj.recordingFileSize, protocol: 2, icon: obj.icon, name: obj.name, meshid: obj.meshid, userids: obj.userIds, multiplex: true };
                 var mesh = parent.meshes[obj.meshid];
                 if (mesh != null) { event.meshname = mesh.name; }
                 if (obj.sessionStart) { event.startTime = obj.sessionStart; event.lengthTime = obj.sessionLength; }
@@ -354,7 +358,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
 
         // Log end of multiplex session
         if (obj.startTime != null) {
-            var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, msgid: 8, msgArgs: [Math.floor((Date.now() - obj.startTime) / 1000)], msg: "Closed desktop multiplex session" + ', ' + Math.floor((Date.now() - obj.startTime) / 1000) + ' second(s)', protocol: 2 };
+            var event = { etype: 'relay', action: 'relaylog', domain: domain.id, nodeid: obj.nodeid, msgid: 147, msgArgs: [obj.id, Math.floor((Date.now() - obj.startTime) / 1000)], msg: "Closed desktop multiplex session \"" + obj.id + "\", " + Math.floor((Date.now() - obj.startTime) / 1000) + ' second(s)', protocol: 2 };
             parent.parent.DispatchEvent(['*', obj.nodeid, obj.meshid], obj, event);
             obj.startTime = null;
         }
@@ -680,8 +684,11 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
             if (data.length >= 12) {
                 command = data.readUInt16BE(8);
                 cmdsize = data.readUInt32BE(4);
-                if (data.length == (cmdsize + 8)) {
-                    data = data.slice(8, data.length);
+                // The agent pads jumbo packets up to an 8-byte boundary, so data.length is
+                // usually 1..7 bytes longer than (cmdsize + 8). The previous exact-equality
+                // check classified those complete frames as partial and dropped them.
+                if (data.length >= (cmdsize + 8)) {
+                    data = data.slice(8, cmdsize + 8);
                 } else {
                     console.log('TODO-PARTIAL-JUMBO', command, cmdsize, data.length);
                     return; // TODO
@@ -693,7 +700,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
             case 3: // Tile, check dimentions and store
                 if ((data.length < 10) || (obj.lastData == null)) break;
                 var x = data.readUInt16BE(4), y = data.readUInt16BE(6);
-                var dimensions = require('image-size')(data.slice(8));
+                var dimensions = require('image-size').imageSize(data.slice(8));
                 var sx = (x / 16), sy = (y / 16), sw = (dimensions.width / 16), sh = (dimensions.height / 16);
                 obj.counter++;
                 
@@ -787,11 +794,14 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
                 break;
             case 15: // KVM_TOUCH
                 break;
-            case 16: // MNG_KVM_CONNECTCOUNT
-                break;
             case 17: // MNG_KVM_MESSAGE
                 // Send this to all viewers right away
                 obj.sendToAllViewers(data);
+                break;
+            case 18: // MNG_KVM_KEYSTATE
+                // Store and send this to all viewers right away
+                obj.lastKeyState = data;
+                obj.sendToAllInputViewers(data);
                 break;
             case 65: // Alert
                 // Send this to all viewers right away
@@ -840,7 +850,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, func) {
                 return;
             }
             // Write the recording file header
-            parent.parent.debug('relay', 'Relay: Started recoding to file: ' + recFullFilename);
+            parent.parent.debug('relay', 'Relay: Started recording to file: ' + recFullFilename);
             var metadata = { magic: 'MeshCentralRelaySession', ver: 1, nodeid: obj.nodeid, meshid: obj.meshid, time: new Date().toLocaleString(), protocol: 2, devicename: obj.name, devicegroup: obj.meshname };
             var firstBlock = JSON.stringify(metadata);
             recordingEntry(fd, 1, 0, firstBlock, function () {
@@ -1045,8 +1055,8 @@ function CreateMeshRelayEx2(parent, ws, req, domain, user, cookie) {
     // Check relay authentication
     if ((user == null) && (obj.req.query != null) && (obj.req.query.rauth != null)) {
         const rcookie = parent.parent.decodeCookie(obj.req.query.rauth, parent.parent.loginCookieEncryptionKey, 240); // Cookie with 4 hour timeout
-        if (rcookie.ruserid != null) { obj.ruserid = rcookie.ruserid; } else if (rcookie.nouser === 1) { obj.rnouser = true; }
-        if (rcookie.nodeid != null) { obj.nodeid = rcookie.nodeid; }
+        if (rcookie != null) { if (rcookie.ruserid != null) { obj.ruserid = rcookie.ruserid; } else if (rcookie.nouser === 1) { obj.rnouser = true; } }
+        if (rcookie != null) { if (rcookie.nodeid != null) { obj.nodeid = rcookie.nodeid; } }
     }
 
     // If there is no authentication, drop this connection
@@ -1132,6 +1142,7 @@ function CreateMeshRelayEx2(parent, ws, req, domain, user, cookie) {
                         command.realname = user.realname;   // Add real name
                     }
                     if (typeof domain.desktopprivacybartext == 'string') { command.privacybartext = domain.desktopprivacybartext; } // Privacy bar text
+                    if ((typeof domain.desktopprivacybarmaxwidth == 'number') && (domain.desktopprivacybarmaxwidth > 0)) { command.privacybarmaxwidth = domain.desktopprivacybarmaxwidth; } // Privacy bar maximum width
                     delete command.nodeid;              // Remove the nodeid since it's implyed.
                     agent.send(JSON.stringify(command));
                     return true;
@@ -1154,6 +1165,7 @@ function CreateMeshRelayEx2(parent, ws, req, domain, user, cookie) {
                             command.realname = user.realname;       // Add real name
                         }
                         if (typeof domain.desktopprivacybartext == 'string') { command.privacybartext = domain.desktopprivacybartext; } // Privacy bar text
+                        if ((typeof domain.desktopprivacybarmaxwidth == 'number') && (domain.desktopprivacybarmaxwidth > 0)) { command.privacybarmaxwidth = domain.desktopprivacybarmaxwidth; } // Privacy bar maximum width
                         parent.parent.multiServer.DispatchMessageSingleServer(command, routing.serverid);
                         return true;
                     }
@@ -1203,7 +1215,7 @@ function CreateMeshRelayEx2(parent, ws, req, domain, user, cookie) {
         if (obj.deskMultiplexor == null) {
             parent.desktoprelays[obj.nodeid] = 1; // Indicate that the creating of the desktop multiplexor is pending.
             parent.parent.debug('relay', 'DesktopRelay: Creating new desktop multiplexor');
-            CreateDesktopMultiplexor(parent, domain, obj.nodeid, function (deskMultiplexor) {
+            CreateDesktopMultiplexor(parent, domain, obj.nodeid, obj.id, function (deskMultiplexor) {
                 if (deskMultiplexor != null) {
                     // Desktop multiplexor was created, use it.
                     obj.deskMultiplexor = deskMultiplexor;
@@ -1332,12 +1344,24 @@ function CreateMeshRelayEx2(parent, ws, req, domain, user, cookie) {
                 const rcookieData = { nodeid: node._id };
                 if (user != null) { rcookieData.ruserid = user._id; } else if (obj.nouser === true) { rcookieData.nouser = 1; }
                 const rcookie = parent.parent.encodeCookie(rcookieData, parent.parent.loginCookieEncryptionKey);
-                const command = { nodeid: node._id, action: 'msg', type: 'tunnel', value: '*/meshrelay.ashx?p=2&id=' + obj.id + '&rauth=' + rcookie + '&nodeid=' + node._id, soptions: {}, usage: 2, rights: cookie.r, guestname: cookie.gn, consent: cookie.cf, remoteaddr: cleanRemoteAddr(obj.req.clientIp) };
+                const command = { nodeid: node._id, action: 'msg', type: 'tunnel', value: '*/meshrelay.ashx?p=2&id=' + obj.id + '&rauth=' + rcookie + '&nodeid=' + node._id, soptions: {}, usage: 2, rights: cookie.r, guestuserid: user._id, guestname: cookie.gn, consent: cookie.cf, remoteaddr: cleanRemoteAddr(obj.req.clientIp) };
+                if (typeof domain.terminaluservariable == 'string') { command.soptions.terminalUserVariable = domain.terminaluservariable; }
                 if (typeof domain.consentmessages == 'object') {
                     if (typeof domain.consentmessages.title == 'string') { command.soptions.consentTitle = domain.consentmessages.title; }
                     if (typeof domain.consentmessages.desktop == 'string') { command.soptions.consentMsgDesktop = domain.consentmessages.desktop; }
                     if (typeof domain.consentmessages.terminal == 'string') { command.soptions.consentMsgTerminal = domain.consentmessages.terminal; }
                     if (typeof domain.consentmessages.files == 'string') { command.soptions.consentMsgFiles = domain.consentmessages.files; }
+                    if ((typeof domain.consentmessages.consenttimeout == 'number') && (domain.consentmessages.consenttimeout > 0)) { command.soptions.consentTimeout = domain.consentmessages.consenttimeout; }
+                    if (domain.consentmessages.autoacceptontimeout === true) { command.soptions.consentAutoAccept = true; }
+                    if (domain.consentmessages.autoacceptifnouser === true) { command.soptions.consentAutoAcceptIfNoUser = true; }
+                    if (domain.consentmessages.autoacceptifdesktopnouser === true) { command.soptions.consentAutoAcceptIfDesktopNoUser = true; }
+                    if (domain.consentmessages.autoacceptifterminalnouser === true) { command.soptions.consentAutoAcceptIfTerminalNoUser = true; }
+                    if (domain.consentmessages.autoacceptiffilenouser === true) { command.soptions.consentAutoAcceptIfFileNoUser = true; }
+                    if (domain.consentmessages.autoacceptiflocked === true) { command.soptions.consentAutoAcceptIfLocked = true; }
+                    if (domain.consentmessages.autoacceptifdesktoplocked === true) { command.soptions.consentAutoAcceptIfDesktopLocked = true; }
+                    if (domain.consentmessages.autoacceptifterminallocked === true) { command.soptions.consentAutoAcceptIfTerminalLocked = true; }
+                    if (domain.consentmessages.autoacceptiffilelocked === true) { command.soptions.consentAutoAcceptIfFileLocked = true; }
+                    if (domain.consentmessages.oldstyle === true) { command.soptions.oldStyle = true; }
                 }
                 if (typeof domain.notificationmessages == 'object') {
                     if (typeof domain.notificationmessages.title == 'string') { command.soptions.notifyTitle = domain.notificationmessages.title; }

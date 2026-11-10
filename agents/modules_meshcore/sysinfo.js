@@ -106,32 +106,39 @@ function windows_memUtilization()
     return (ret);
 }
 
-function linux_cpuUtilization()
-{
+var cpuLastIdle = [];
+var cpuLastSum = [];
+function linux_cpuUtilization() {
     var ret = { cpus: [] };
     var info = require('fs').readFileSync('/proc/stat');
     var lines = info.toString().split('\n');
     var columns;
     var x, y;
-    var sum, idle, utilization;
-    for (var i in lines)
-    {
+    var cpuNo = 0;
+    var currSum, currIdle, utilization;
+    for (var i in lines) {
         columns = lines[i].split(' ');
         if (!columns[0].startsWith('cpu')) { break; }
 
-        x = 0, sum = 0;
+        x = 0, currSum = 0;
         while (columns[++x] == '');
-        for (y = x; y < columns.length; ++y) { sum += parseInt(columns[y]); }
-        idle = parseInt(columns[3 + x]);
-        utilization = (100 - ((idle / sum) * 100)); //.toFixed(2);
-        if (!ret.total)
-        {
+        for (y = x; y < columns.length; ++y) { currSum += parseInt(columns[y]); }
+        currIdle = parseInt(columns[3 + x]);
+
+        var diffIdle = currIdle - cpuLastIdle[cpuNo];
+        var diffSum = currSum - cpuLastSum[cpuNo];
+
+        utilization = (100 - ((diffIdle / diffSum) * 100));
+
+        cpuLastSum[cpuNo] = currSum;
+        cpuLastIdle[cpuNo] = currIdle;
+
+        if (!ret.total) {
             ret.total = utilization;
-        }
-        else
-        {
+        } else {
             ret.cpus.push(utilization);
         }
+        ++cpuNo;
     }
 
     var p = new promise(function (res, rej) { this._res = res; this._rej = rej; });
@@ -152,7 +159,7 @@ function linux_memUtilization()
             case 'MemTotal:':
                 ret.total = parseInt(tokens[tokens.length - 2]);
                 break;
-            case 'MemFree:':
+            case 'MemAvailable:':
                 ret.free = parseInt(tokens[tokens.length - 2]);
                 break;
         }
@@ -202,9 +209,13 @@ function macos_memUtilization()
     {
         var usage = lines[0].split(':')[1];
         var bdown = usage.split(',');
-
-        mem.MemTotal = parseInt(bdown[0].trim().split(' ')[0]);
-        mem.MemFree = parseInt(bdown[1].trim().split(' ')[0]);
+        if (bdown.length > 2){ // new style - PhysMem: 5750M used (1130M wired, 634M compressor), 1918M unused.
+            mem.MemFree = parseInt(bdown[2].trim().split(' ')[0]);
+        } else { // old style - PhysMem: 6683M used (1606M wired), 9699M unused.
+            mem.MemFree = parseInt(bdown[1].trim().split(' ')[0]);
+        }
+        mem.MemUsed = parseInt(bdown[0].trim().split(' ')[0]);
+        mem.MemTotal = (mem.MemFree + mem.MemUsed);
         mem.percentFree = ((mem.MemFree / mem.MemTotal) * 100);//.toFixed(2);
         mem.percentConsumed = (((mem.MemTotal - mem.MemFree) / mem.MemTotal) * 100);//.toFixed(2);
         return (mem);
@@ -218,31 +229,48 @@ function macos_memUtilization()
 function windows_thermals()
 {
     var ret = [];
-    child = require('child_process').execFile(process.env['windir'] + '\\System32\\wbem\\wmic.exe', ['wmic', '/namespace:\\\\root\\wmi', 'PATH', 'MSAcpi_ThermalZoneTemperature', 'get', 'CurrentTemperature']);
-    child.stdout.str = ''; child.stdout.on('data', function (c) { this.str += c.toString(); });
-    child.stderr.str = ''; child.stderr.on('data', function (c) { this.str += c.toString(); });
-    child.waitExit();
-
-    if(child.stdout.str.trim!='')
-    {
-        var lines = child.stdout.str.trim().split('\r\n');
-        for (var i = 1; i < lines.length; ++i)
-        {
-            if (lines[i].trim() != '') { ret.push(((parseFloat(lines[i]) / 10) - 273.15).toFixed(2)); }
+    try {
+        ret = require('win-wmi-fixed').query('ROOT\\WMI', 'SELECT CurrentTemperature,InstanceName FROM MSAcpi_ThermalZoneTemperature',['CurrentTemperature','InstanceName']);
+        if (ret[0]) {
+            for (var i = 0; i < ret.length; ++i) {
+                ret[i]['CurrentTemperature'] = ((parseFloat(ret[i]['CurrentTemperature']) / 10) - 273.15).toFixed(2);
+            }
         }
-    }
+    } catch (ex) { }
     return (ret);
 }
 
 function linux_thermals()
 {
+    var ret = [];
     child = require('child_process').execFile('/bin/sh', ['sh']);
     child.stdout.str = ''; child.stdout.on('data', function (c) { this.str += c.toString(); });
     child.stderr.str = ''; child.stderr.on('data', function (c) { this.str += c.toString(); });
-    child.stdin.write("cat /sys/class/thermal/thermal_zone*/temp | awk '{ print $0 / 1000 }'\nexit\n");
+    child.stdin.write("for folder in /sys/class/thermal/thermal_zone*/; do [ -e \"$folder/temp\" ] && echo \"$(cat \"$folder/temp\"),$(cat \"$folder/type\")\"; done\nexit\n");
     child.waitExit();
-    var ret = child.stdout.str.trim().split('\n');
-    if (ret.length == 1 && ret[0] == '') { ret = []; }
+    if(child.stdout.str.trim()!='')
+    {
+        var lines = child.stdout.str.trim().split('\n');
+        for (var i = 0; i < lines.length; ++i)
+        {
+            var line = lines[i].trim().split(',');
+            ret.push({CurrentTemperature: (parseFloat(line[0])/1000), InstanceName: line[1]});
+        }
+    }
+    child = require('child_process').execFile('/bin/sh', ['sh']);
+    child.stdout.str = ''; child.stdout.on('data', function (c) { this.str += c.toString(); });
+    child.stderr.str = ''; child.stderr.on('data', function (c) { this.str += c.toString(); });
+    child.stdin.write("for mon in /sys/class/hwmon/hwmon*; do for label in \"$mon\"/temp*_label; do if [ -f $label ]; then echo $(cat \"$label\")___$(cat \"${label%_*}_input\"); fi; done; done;\nexit\n");
+    child.waitExit();
+    if(child.stdout.str.trim()!='')
+    {
+        var lines = child.stdout.str.trim().split('\n');
+        for (var i = 0; i < lines.length; ++i)
+        {
+            var line = lines[i].trim().split('___');
+            ret.push({ CurrentTemperature: (parseFloat(line[1])/1000), InstanceName: line[0] });
+        }
+    }
     return (ret);
 }
 
@@ -254,7 +282,6 @@ function macos_thermals()
     child.stderr.on('data', function () { });
     child.stdin.write('powermetrics --help | grep SMC\nexit\n');
     child.waitExit();
-    
     if (child.stdout.str.trim() != '')
     {
         child = require('child_process').execFile('/bin/sh', ['sh']);
@@ -266,14 +293,19 @@ function macos_thermals()
             {
                 if (tokens[i].split(' die temperature: ').length > 1)
                 {
-                    ret.push(tokens[i].split(' ')[3]);
+                    ret.push({CurrentTemperature: tokens[i].split(' ')[3], InstanceName: tokens[i].split(' ')[0]});
                     this.parent.kill();
                 }
             }
         });
-        child.stderr.str = ''; child.stderr.on('data', function (c) { this.str += c.toString(); });
-        child.stdin.write('powermetrics -s smc\n');
-        child.waitExit(5000);
+        child.stderr.on('data', function (c) {
+            if (c.toString().split('unable to get smc values').length > 1) { // error getting sensors so just kill
+                this.parent.kill();
+                return;
+            }
+        });
+        child.stdin.write('powermetrics -s smc -i 500 -n 1\n');
+        child.waitExit(2000);
     }
     return (ret);
 }

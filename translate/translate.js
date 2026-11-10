@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 //const zlib = require('zlib');
 var performCheck = false;
 var translationTable = null;
@@ -21,6 +22,7 @@ var meshCentralSourceFiles = [
     "../views/agentinvite.handlebars",
     "../views/invite.handlebars",
     "../views/default.handlebars",
+    "../views/default3.handlebars",
     "../views/default-mobile.handlebars",
     "../views/download.handlebars",
     "../views/download2.handlebars",
@@ -37,6 +39,7 @@ var meshCentralSourceFiles = [
     "../views/messenger.handlebars",
     "../views/player.handlebars",
     "../views/sharing.handlebars",
+    "../views/sharing-mobile.handlebars",
     "../views/mstsc.handlebars",
     "../views/ssh.handlebars",
     "../emails/account-check.html",
@@ -45,12 +48,14 @@ var meshCentralSourceFiles = [
     "../emails/account-reset.html",
     "../emails/mesh-invite.html",
     "../emails/device-notify.html",
+    "../emails/device-help.html",
     "../emails/account-check.txt",
     "../emails/account-invite.txt",
     "../emails/account-login.txt",
     "../emails/account-reset.txt",
     "../emails/mesh-invite.txt",
     "../emails/device-notify.txt",
+    "../emails/device-help.txt",
     "../emails/sms-messages.txt",
     "../agents/agent-translations.json",
     "../agents/modules_meshcore/coretranslations.json"
@@ -60,6 +65,7 @@ var minifyMeshCentralSourceFiles = [
     "../views/agentinvite.handlebars",
     "../views/invite.handlebars",
     "../views/default.handlebars",
+    "../views/default3.handlebars",
     "../views/default-mobile.handlebars",
     "../views/download.handlebars",
     "../views/download2.handlebars",
@@ -81,6 +87,7 @@ var minifyMeshCentralSourceFiles = [
     "../views/mstsc.handlebars",
     "../views/ssh.handlebars",
     "../public/scripts/agent-desktop-0.0.2.js",
+    "../public/scripts/agent-rdp-0.0.1.js",
     "../public/scripts/agent-redir-rtc-0.1.0.js",
     "../public/scripts/agent-redir-ws-0.1.1.js",
     "../public/scripts/amt-0.2.0.js",
@@ -92,13 +99,11 @@ var minifyMeshCentralSourceFiles = [
     "../public/scripts/amt-terminal-0.0.2.js",
     "../public/scripts/amt-wsman-0.2.0.js",
     "../public/scripts/amt-wsman-ws-0.2.0.js",
-    "../public/scripts/charts.js",
     "../public/scripts/common-0.0.1.js",
     "../public/scripts/meshcentral.js",
-    "../public/scripts/ol.js",
-    "../public/scripts/ol3-contextmenu.js",
     "../public/scripts/u2f-api.js",
     "../public/scripts/xterm-addon-fit.js",
+    "../public/scripts/xterm-addon-image.js",
     "../public/scripts/xterm.js",
     "../public/scripts/zlib-adler32.js",
     "../public/scripts/zlib-crc32.js",
@@ -138,8 +143,8 @@ if (directRun && (NodeJSVer >= 12)) {
             // Get things setup
             jsdom = require('jsdom');
             esprima = require('esprima'); // https://www.npmjs.com/package/esprima
-            if (minifyLib == 1) { minify = require('minify-js'); }
-            if (minifyLib == 2) { minify = require('html-minifier').minify; } // https://www.npmjs.com/package/html-minifier
+            if (minifyLib == 1) { log("minify-js is no longer used, please switch to \"html-minifier-terser\""); process.exit(); return; }
+            if (minifyLib == 2) { minify = require('html-minifier-terser').minify; } // https://www.npmjs.com/package/html-minifier
 
             switch (op) {
                 case 'translate': {
@@ -155,24 +160,24 @@ if (directRun && (NodeJSVer >= 12)) {
 if (directRun) { setup(); }
 
 function setup() {
-    var libs = ['jsdom', 'esprima', 'minify-js'];
-    if (minifyLib == 1) { libs.push('minify-js'); }
-    if (minifyLib == 2) { libs.push('html-minifier'); }
+    var libs = ['jsdom@22.1.0', 'esprima@4.0.1'];
+    if (minifyLib == 1) { log("minify-js is no longer used, please switch to \"html-minifier-terser\""); process.exit(); return; }
+    if (minifyLib == 2) { libs.push('html-minifier-terser@7.2.0'); }
     InstallModules(libs, start);
 }
 
 function start() { startEx(process.argv); }
 
-function startEx(argv) {
+async function startEx(argv) {
     // Load dependencies
     jsdom = require('jsdom');
     esprima = require('esprima'); // https://www.npmjs.com/package/esprima
-    if (minifyLib == 1) { minify = require('minify-js'); }
-    if (minifyLib == 2) { minify = require('html-minifier').minify; } // https://www.npmjs.com/package/html-minifier
+    if (minifyLib == 1) { log("minify-js is no longer used, please switch to \"html-minifier-terser\""); process.exit(); return; }
+    if (minifyLib == 2) { minify = require('html-minifier-terser').minify; } // https://www.npmjs.com/package/html-minifier-terser
 
     var command = null;
     if (argv.length > 2) { command = argv[2].toLowerCase(); }
-    if (['minify', 'check', 'extract', 'extractall', 'translate', 'translateall', 'minifyall', 'merge', 'totext', 'fromtext', 'remove'].indexOf(command) == -1) { command = null; }
+    if (['minify', 'check', 'extract', 'extractall', 'translate', 'translateall', 'minifyall', 'minifydir', 'merge', 'totext', 'fromtext', 'remove'].indexOf(command) == -1) { command = null; }
 
     if (directRun) { log('MeshCentral web site translator'); }
     if (command == null) {
@@ -196,6 +201,9 @@ function startEx(argv) {
         log('');
         log('  MINIFY [sourcefile]');
         log('    Minify a single file.');
+        log('');
+        log('  MINIFYDIR [sourcedir] [destinationdir]');
+        log('    Minify all files in a directory.');
         log('');
         log('  MINIFYALL');
         log('    Minify the main MeshCentral english web pages.');
@@ -341,6 +349,56 @@ function startEx(argv) {
         translate(lang, langFile, sources, subdir);
     }
 
+    if (command == 'minifydir') {
+        if (argv.length < 4) { log("Command source and/or destination folders missing."); process.exit(); return; }
+        const sourceFiles = fs.readdirSync(argv[3]);
+        for (var i in sourceFiles) {
+            if (sourceFiles[i].endsWith('.js') || sourceFiles[i].endsWith('.json')) {
+                console.log("Processing " + sourceFiles[i] + "...");
+                const sourceFile = path.join(argv[3], sourceFiles[i]);
+                if (sourceFiles[i].endsWith('.js')) {
+                    // Minify the file .js file
+                    const destinationFile = path.join(argv[4], sourceFiles[i].substring(0, sourceFiles[i].length - 3) + '.min.js');
+                    if (minifyLib == 2) {
+                        var inFile = fs.readFileSync(sourceFile).toString();
+
+                        // Perform minification pre-processing
+                        if (sourceFile.endsWith('.handlebars') >= 0) { inFile = inFile.split('{{{pluginHandler}}}').join('"{{{pluginHandler}}}"'); }
+                        if (sourceFile.endsWith('.js')) { inFile = '<script>' + inFile + '</script>'; }
+
+                        var minifiedOut = await minify(inFile, {
+                            collapseBooleanAttributes: true,
+                            collapseInlineTagWhitespace: false, // This is not good.
+                            collapseWhitespace: true,
+                            minifyCSS: true,
+                            minifyJS: true,
+                            removeComments: true,
+                            removeOptionalTags: true,
+                            removeEmptyAttributes: true,
+                            removeAttributeQuotes: true,
+                            removeRedundantAttributes: true,
+                            removeScriptTypeAttributes: true,
+                            removeTagWhitespace: true,
+                            preserveLineBreaks: false,
+                            useShortDoctype: true
+                        });
+
+                        // Perform minification post-processing
+                        if (sourceFile.endsWith('.js')) { minifiedOut = minifiedOut.substring(8, minifiedOut.length - 9); }
+                        if (sourceFile.endsWith('.handlebars') >= 0) { minifiedOut = minifiedOut.split('"{{{pluginHandler}}}"').join('{{{pluginHandler}}}'); }
+                        fs.writeFileSync(destinationFile, minifiedOut, { flag: 'w+' });
+                    }
+                } else if (sourceFiles[i].endsWith('.json')) {
+                    // Minify the file .json file
+                    const destinationFile = path.join(argv[4], sourceFiles[i]);
+                    var inFile = JSON.parse(fs.readFileSync(sourceFile).toString());
+                    fs.writeFileSync(destinationFile, JSON.stringify(inFile), { flag: 'w+' });
+                }
+
+            }
+        }
+    }
+
     if (command == 'minifyall') {
         for (var i in minifyMeshCentralSourceFiles) {
             var outname = minifyMeshCentralSourceFiles[i];
@@ -366,7 +424,7 @@ function startEx(argv) {
                     dist: outnamemin
                 }, function (e, compress) {
                     if (e) { log('ERROR ', e); return done(); }
-                    compress.run((e) => { e ? log('Minification fail', e) : log('Minification sucess'); minifyDone(); });
+                    compress.run((e) => { e ? log('Minification fail', e) : log('Minification success'); minifyDone(); });
                 }
                 );
             }
@@ -382,7 +440,7 @@ function startEx(argv) {
 
                 var minifiedOut = null;
                 try {
-                    minifiedOut = minify(inFile, {
+                    minifiedOut = await minify(inFile, {
                         collapseBooleanAttributes: true,
                         collapseInlineTagWhitespace: false, // This is not good.
                         collapseWhitespace: true,
@@ -396,7 +454,7 @@ function startEx(argv) {
                         removeScriptTypeAttributes: true,
                         removeTagWhitespace: true,
                         preserveLineBreaks: false,
-                        useShortDoctype: true
+                        log: function(a) { if (typeof a !== 'string') { console.log(a); } } // Log errors from UglifyJS to console output
                     });
                 } catch (ex) {
                     console.log(ex);
@@ -405,7 +463,6 @@ function startEx(argv) {
                 // Perform minification post-processing
                 if (outname.endsWith('.js')) { minifiedOut = minifiedOut.substring(8, minifiedOut.length - 9); }
                 if (outname.endsWith('.handlebars') >= 0) { minifiedOut = minifiedOut.split('"{{{pluginHandler}}}"').join('{{{pluginHandler}}}'); }
-
                 fs.writeFileSync(outnamemin, minifiedOut, { flag: 'w+' });
 
                 /*
@@ -435,20 +492,22 @@ function startEx(argv) {
             outnamemin = (outname.substring(0, outname.length - 5) + '-min.html');
         } else if (outname.endsWith('.htm')) {
             outnamemin = (outname.substring(0, outname.length - 4) + '-min.htm');
+        } else if (outname.endsWith('.js')) {
+            outnamemin = (outname.substring(0, outname.length - 3) + '-min.js');
         } else {
             outnamemin = (outname, outname + '.min');
         }
         log('Generating ' + path.basename(outnamemin) + '...');
 
         // Minify the file
-        if (minifyLib = 2) {
+        if (minifyLib == 2) {
             var inFile = fs.readFileSync(outname).toString()
 
             // Perform minification pre-processing
             if (outname.endsWith('.handlebars') >= 0) { inFile = inFile.split('{{{pluginHandler}}}').join('"{{{pluginHandler}}}"'); }
             if (outname.endsWith('.js')) { inFile = '<script>' + inFile + '</script>'; }
 
-            var minifiedOut = minify(inFile, {
+            var minifiedOut = await minify(inFile, {
                 collapseBooleanAttributes: true,
                 collapseInlineTagWhitespace: false, // This is not good.
                 collapseWhitespace: true,
@@ -469,6 +528,7 @@ function startEx(argv) {
             if (outname.endsWith('.js')) { minifiedOut = minifiedOut.substring(8, minifiedOut.length - 9); }
             if (outname.endsWith('.handlebars') >= 0) { minifiedOut = minifiedOut.split('"{{{pluginHandler}}}"').join('{{{pluginHandler}}}'); }
             fs.writeFileSync(outnamemin, minifiedOut, { flag: 'w+' });
+
         }
     }
 }
@@ -507,13 +567,13 @@ function totext(source, target, lang) {
 
     if (splitOutputPtr == 1) {
         // Save the target back
-        fs.writeFileSync(target + '-' + lang + '.txt', output.join('\r\n'), { flag: 'w+' });
+        fs.writeFileSync(target + '-' + lang + '.txt', output.join(os.EOL), { flag: 'w+' });
         log('Done.');
     } else {
         // Save the text in 1000 string bunches
         for (var i in splitOutput) {
             log('Writing ' + target + '-' + lang + '-' + i + '.txt...');
-            fs.writeFileSync(target + '-' + lang + '-' + i + '.txt', splitOutput[i].join('\r\n'), { flag: 'w+' });
+            fs.writeFileSync(target + '-' + lang + '-' + i + '.txt', splitOutput[i].join(os.EOL), { flag: 'w+' });
         }
         log('Done.');
     }
@@ -529,7 +589,7 @@ function fromtext(source, target, lang) {
 
     // Read raw text
     var rawText = fs.readFileSync(target).toString('utf8');
-    var rawTextArray = rawText.split('\r\n');
+    var rawTextArray = rawText.split(/\r?\n/);
     var rawTextPtr = 0;
 
     log('Translation file: ' + sourceLangFileData.strings.length + ' string(s)');
@@ -595,14 +655,27 @@ function translate(lang, langFile, sources, createSubDir) {
 
         langs = {};
         for (var i in langFileData.strings) { var entry = langFileData.strings[i]; for (var j in entry) { if ((j != 'en') && (j != 'xloc') && (j != '*')) { langs[j.toLowerCase()] = true; } } }
-        for (var i in langs) {
-            const { Worker } = require('worker_threads')
-            const worker = new Worker('./translate.js', { stdout: true, workerData: { op: 'translate', args: [i, langFile, sources, createSubDir] } });
-            worker.stdout.on('data', function (msg) { console.log('wstdio:', msg.toString()); });
-            worker.on('message', function (message) { console.log(message.msg); });
-            worker.on('error', function (error) { console.log('error', error); });
-            worker.on('exit', function (code) { /*console.log('exit', code);*/ })
+        var Worker = require('worker_threads').Worker;
+        var MAX_WORKERS = os.cpus().length; // limit to the number of CPU cores for now
+        var activeWorkers = 0;
+        var taskQueue = [];
+        function processNextTask() {
+            if (activeWorkers < MAX_WORKERS && taskQueue.length > 0) {
+                var nextTask = taskQueue.shift();
+                activeWorkers++;
+                var worker = new Worker('./translate.js', { stdout: true, workerData: { op: 'translate', args: [nextTask.lang, nextTask.langFile, nextTask.sources, nextTask.createSubDir] } });
+                worker.stdout.on('data', function (msg) { console.log('wstdio:', msg.toString()); });
+                worker.on('message', function (message) { console.log(message.msg); });
+                worker.on('error', function (error) { console.log('error', error); activeWorkers--; processNextTask(); });
+                worker.on('exit', function (code) { /*console.log('exit', code);*/ activeWorkers--; processNextTask(); });
+            }
         }
+        for (var lang in langs) {
+            if (langs.hasOwnProperty(lang)) {
+                taskQueue.push({ lang: lang, langFile: langFile, sources: sources, createSubDir: createSubDir});
+            }
+        }
+        for (var i = 0; i < Math.min(MAX_WORKERS, taskQueue.length); i++) { processNextTask(); }
     } else {
         // Single threaded translation
         translateSingleThreaded(lang, langFile, sources, createSubDir);
@@ -641,7 +714,7 @@ function translateEx(lang, langFileData, sources, createSubDir) {
     }
     // Translate the files
     for (var i = 0; i < sources.length; i++) {
-        if (sources[i].endsWith('.html') || sources[i].endsWith('.htm') || sources[i].endsWith('.handlebars')) { translateFromHtml(lang, sources[i], createSubDir); }
+        if (sources[i].endsWith('.html') || sources[i].endsWith('.htm') || sources[i].endsWith('.handlebars') || sources[i].endsWith('.js')) { translateFromHtml(lang, sources[i], createSubDir); }
         else if (sources[i].endsWith('.txt')) { translateFromTxt(lang, sources[i], createSubDir); }
     }
 }
@@ -658,7 +731,7 @@ function extract(langFile, sources) {
         }
     }
     for (var i = 0; i < sources.length; i++) {
-        if (sources[i].endsWith('.html') || sources[i].endsWith('.htm') || sources[i].endsWith('.handlebars')) { extractFromHtml(sources[i]); } 
+        if (sources[i].endsWith('.html') || sources[i].endsWith('.htm') || sources[i].endsWith('.handlebars') || sources[i].endsWith('.js')) { extractFromHtml(sources[i]); }
         else if (sources[i].endsWith('.txt')) { extractFromTxt(sources[i]); }
         else if (sources[i].endsWith('.json')) { extractFromJson(sources[i]); }
     }
@@ -677,7 +750,7 @@ function extract(langFile, sources) {
 
 function extractFromTxt(file) {
     log("Processing TXT: " + path.basename(file));
-    var lines = fs.readFileSync(file).toString().split('\r\n');
+    var lines = fs.readFileSync(file).toString().split(/\r?\n/);
     var name = path.basename(file);
     for (var i in lines) {
         var line = lines[i];
@@ -713,6 +786,7 @@ function extractFromJson(file) {
 
 function extractFromHtml(file) {
     var data = fs.readFileSync(file);
+    if (file.endsWith('.js')) { data = '<html><head></head><body><script>' + data + '</script></body></html>'; }
     var { JSDOM } = jsdom;
     const dom = new JSDOM(data, { includeNodeLocations: true });
     log("Processing HTML: " + path.basename(file));
@@ -725,10 +799,12 @@ function getStringsHtml(name, node) {
 
         // Check if the "value" attribute exists and needs to be translated
         var subnodeignore = false;
+        var subnodevalueignore = false;
         if ((subnode.attributes != null) && (subnode.attributes.length > 0)) {
             var subnodevalue = null, subnodeplaceholder = null, subnodetitle = null;
             for (var j in subnode.attributes) {
                 if ((subnode.attributes[j].name == 'notrans') && (subnode.attributes[j].value == '1')) { subnodeignore = true; }
+                if ((subnode.attributes[j].name == 'notransval') && (subnode.attributes[j].value == '1')) { subnodevalueignore = true; }
                 if ((subnode.attributes[j].name == 'type') && (subnode.attributes[j].value == 'hidden')) { subnodeignore = true; }
                 if (subnode.attributes[j].name == 'value') { subnodevalue = subnode.attributes[j].value; }
                 if (subnode.attributes[j].name == 'placeholder') { subnodeplaceholder = subnode.attributes[j].value; }
@@ -737,7 +813,7 @@ function getStringsHtml(name, node) {
             if ((subnodevalue != null) && isNumber(subnodevalue) == true) { subnodevalue = null; }
             if ((subnodeplaceholder != null) && isNumber(subnodeplaceholder) == true) { subnodeplaceholder = null; }
             if ((subnodetitle != null) && isNumber(subnodetitle) == true) { subnodetitle = null; }
-            if ((subnodeignore == false) && (subnodevalue != null)) {
+            if ((subnodeignore == false) && (subnodevalueignore == false) && (subnodevalue != null)) {
                 // Add a new string to the list (value)
                 if (sourceStrings[subnodevalue] == null) { sourceStrings[subnodevalue] = { en: subnodevalue, xloc: [name] }; } else { if (sourceStrings[subnodevalue].xloc == null) { sourceStrings[subnodevalue].xloc = []; } sourceStrings[subnodevalue].xloc.push(name); }
             }
@@ -791,7 +867,7 @@ function getStringFromJavaScript(name, script) {
 
 function translateFromTxt(lang, file, createSubDir) {
     log("Translating TXT (" + lang + "): " + path.basename(file));
-    var lines = fs.readFileSync(file).toString().split('\r\n'), outlines = [];
+    var lines = fs.readFileSync(file).toString().split(/\r?\n/), outlines = [];
     for (var i in lines) {
         var line = lines[i];
         if ((line.length > 1) && (line[0] != '~')) {
@@ -801,7 +877,7 @@ function translateFromTxt(lang, file, createSubDir) {
         }
     }
 
-    var outname = file, out = outlines.join('\r\n');
+    var outname = file, out = outlines.join(os.EOL);
     if (createSubDir != null) {
         var outfolder = path.join(path.dirname(file), createSubDir);
         if (fs.existsSync(outfolder) == false) { fs.mkdirSync(outfolder); }
@@ -859,7 +935,7 @@ function translateAllInJson(xlang, langFile, file) {
     fs.writeFileSync(file, JSON.stringify(json, null, 2), { flag: 'w+' });
 }
 
-function translateFromHtml(lang, file, createSubDir) {
+async function translateFromHtml(lang, file, createSubDir) {
     var data = fs.readFileSync(file);
     if (file.endsWith('.js')) { data = '<html><head></head><body><script>' + data + '</script></body></html>'; }
     var { JSDOM } = jsdom;
@@ -905,15 +981,17 @@ function translateFromHtml(lang, file, createSubDir) {
             dist: outnamemin
         }, function(e, compress) {
             if (e) { log('ERROR ', e); return done(); }
-            compress.run((e) => { e ? log('Minification fail', e) : log('Minification sucess'); minifyDone(); });
+            compress.run((e) => { e ? log('Minification fail', e) : log('Minification success'); minifyDone(); });
         }
         );
     }
 
     // Minify the file
-    if (minifyLib = 2) {
+    if (minifyLib == 2) {
         if (outnamemin.endsWith('.handlebars') >= 0) { out = out.split('{{{pluginHandler}}}').join('"{{{pluginHandler}}}"'); }
-        var minifiedOut = minify(out, {
+        // The minifier takes html, so a bare script goes in wrapped the way minifyall does it.
+        if (outnamemin.endsWith('.js')) { out = '<script>' + out + '</script>'; }
+        var minifiedOut = await minify(out, {
             collapseBooleanAttributes: true,
             collapseInlineTagWhitespace: false, // This is not good.
             collapseWhitespace: true,
@@ -929,8 +1007,9 @@ function translateFromHtml(lang, file, createSubDir) {
             preserveLineBreaks: false,
             useShortDoctype: true
         });
+        if (outnamemin.endsWith('.js')) { minifiedOut = minifiedOut.substring(8, minifiedOut.length - 9); }
         if (outnamemin.endsWith('.handlebars') >= 0) { minifiedOut = minifiedOut.split('"{{{pluginHandler}}}"').join('{{{pluginHandler}}}'); }
-        fs.writeFileSync(outnamemin, minifiedOut, { flag: 'w+' });
+        fs.writeFileSync(outnamemin, minifiedOut, { flag: 'w+' }); 
     }
 }
 
@@ -1023,25 +1102,28 @@ function format(format) { var args = Array.prototype.slice.call(arguments, 1); r
 
 // Check if a list of modules are present and install any missing ones
 var InstallModuleChildProcess = null;
-var previouslyInstalledModules = {};
 function InstallModules(modules, func) {
     var missingModules = [];
-    if (previouslyInstalledModules == null) { previouslyInstalledModules = {}; }
     if (modules.length > 0) {
         for (var i in modules) {
+            var moduleName = modules[i].split('@')[0];
             try {
-                var xxmodule = require(modules[i]);
+                var xxmodule = require(moduleName);
             } catch (e) {
-                if (previouslyInstalledModules[modules[i]] !== true) { missingModules.push(modules[i]); }
+                missingModules.push(modules[i]);
             }
         }
-        if (missingModules.length > 0) { InstallModule(missingModules.shift(), InstallModules, modules, func); } else { func(); }
+        if (missingModules.length > 0) {
+            console.log('Missing modules: ' + missingModules.join(', ') + '.');
+            InstallModuleEx(modules, func);
+        } else { func(); }
     }
 }
 
 // Check if a module is present and install it if missing
-function InstallModule(modulename, func, tag1, tag2) {
-    log('Installing ' + modulename + '...');
+function InstallModuleEx(modulenames, func) {
+    log('Installing modules...');
+    var names = modulenames.join(' ');
     var child_process = require('child_process');
     var parentpath = __dirname;
 
@@ -1049,15 +1131,14 @@ function InstallModule(modulename, func, tag1, tag2) {
     if ((__dirname.endsWith('/node_modules/meshcentral')) || (__dirname.endsWith('\\node_modules\\meshcentral')) || (__dirname.endsWith('/node_modules/meshcentral/')) || (__dirname.endsWith('\\node_modules\\meshcentral\\'))) { parentpath = require('path').join(__dirname, '../..'); }
 
     // Looks like we need to keep a global reference to the child process object for this to work correctly.
-    InstallModuleChildProcess = child_process.exec('npm install --no-optional ' + modulename, { maxBuffer: 512000, timeout: 120000, cwd: parentpath }, function (error, stdout, stderr) {
+    InstallModuleChildProcess = child_process.exec(`npm install --no-audit --no-optional --omit=optional ${names}`, { maxBuffer: 512000, timeout: 300000, cwd: parentpath }, function (error, stdout, stderr) {
         InstallModuleChildProcess = null;
         if ((error != null) && (error != '')) {
-            log('ERROR: Unable to install required module "' + modulename + '". May not have access to npm, or npm may not have suffisent rights to load the new module. Try "npm install ' + modulename + '" to manualy install this module.\r\n');
+            log('ERROR: Unable to install required modules. May not have access to npm, or npm may not have suffisent rights to load the new modules. Try "npm install ' + names + '" to manually install the modules.\r\n');
             process.exit();
             return;
         }
-        previouslyInstalledModules[modulename] = true;
-        func(tag1, tag2);
+        func();
         return;
     });
 }

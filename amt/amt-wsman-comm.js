@@ -48,9 +48,6 @@ var CreateWsmanComm = function (host, port, user, pass, tls, tlsoptions, mpsConn
     obj.amtVersion = null;
 
     obj.Address = '/wsman';
-    obj.challengeParams = null;
-    obj.noncecounter = 1;
-    obj.authcounter = 0;
     obj.cnonce = obj.crypto.randomBytes(16).toString('hex'); // Generate a random client nonce
 
     obj.host = host;
@@ -164,8 +161,8 @@ var CreateWsmanComm = function (host, port, user, pass, tls, tlsoptions, mpsConn
                 obj.kerberosDone = 1;
             }
         } else if (obj.challengeParams != null) {
-            var response = hex_md5(hex_md5(obj.user + ':' + obj.challengeParams['realm'] + ':' + obj.pass) + ':' + obj.challengeParams['nonce'] + ':' + obj.noncecounter + ':' + obj.cnonce + ':' + obj.challengeParams['qop'] + ':' + hex_md5(action + ':' + url + ((obj.challengeParams['qop'] == 'auth-int') ? (':' + hex_md5(postdata)) : '')));
-            h += 'Authorization: ' + obj.renderDigest({ 'username': obj.user, 'realm': obj.challengeParams['realm'], 'nonce': obj.challengeParams['nonce'], 'uri': url, 'qop': obj.challengeParams['qop'], 'response': response, 'nc': obj.noncecounter++, 'cnonce': obj.cnonce }) + '\r\n';
+            var response = hex_md5(hex_md5(obj.user + ':' + obj.challengeParams['realm'] + ':' + obj.pass) + ':' + obj.challengeParams['nonce'] + ':' + nonceHex(obj.noncecounter) + ':' + obj.cnonce + ':' + obj.challengeParams['qop'] + ':' + hex_md5(action + ':' + url + ((obj.challengeParams['qop'] == 'auth-int') ? (':' + hex_md5(postdata)) : '')));
+            h += 'Authorization: ' + obj.renderDigest({ 'username': obj.user, 'realm': obj.challengeParams['realm'], 'nonce': obj.challengeParams['nonce'], 'uri': url, 'qop': obj.challengeParams['qop'], 'response': response, 'nc': nonceHex(obj.noncecounter++), 'cnonce': obj.cnonce }) + '\r\n';
         }
         h += 'Host: ' + obj.host + ':' + obj.port + '\r\nContent-Length: ' + postdata.length + '\r\n\r\n' + postdata; // Use Content-Length
         //h += 'Host: ' + obj.host + ':' + obj.port + '\r\nTransfer-Encoding: chunked\r\n\r\n' + postdata.length.toString(16).toUpperCase() + '\r\n' + postdata + '\r\n0\r\n\r\n'; // Use Chunked-Encoding
@@ -173,18 +170,18 @@ var CreateWsmanComm = function (host, port, user, pass, tls, tlsoptions, mpsConn
         //console.log('SEND: ' + h); // Display send packet
     }
 
-    // NODE.js specific private method
-    obj.parseDigest = function (header) {
-        var t = header.substring(7).split(',');
-        for (var i in t) t[i] = t[i].trim();
-        return t.reduce(function (obj, s) { var parts = s.split('='); obj[parts[0]] = parts[1].replace(new RegExp('\"', 'g'), ''); return obj; }, {})
-    }
+    // Parse the HTTP digest header and return a list of key & values.
+    obj.parseDigest = function (header) { return correctedQuoteSplit(header.substring(7)).reduce(function (obj, s) { var parts = s.trim().split('='); obj[parts[0]] = parts[1].replace(new RegExp('\"', 'g'), ''); return obj; }, {}) }
+
+    // Split a string on quotes but do not do it when in quotes
+    function correctedQuoteSplit(str) { return str.split(',').reduce(function (a, c) { if (a.ic) { a.st[a.st.length - 1] += ',' + c } else { a.st.push(c) } if (c.split('"').length % 2 == 0) { a.ic = !a.ic } return a; }, { st: [], ic: false }).st }
+    function nonceHex(v) { var s = ('00000000' + v.toString(16)); return s.substring(s.length - 8); }
 
     // NODE.js specific private method
     obj.renderDigest = function (params) {
         var paramsnames = [];
         for (var i in params) { paramsnames.push(i); }
-        return 'Digest ' + paramsnames.reduce(function (s1, ii) { return s1 + ',' + ii + '="' + params[ii] + '"' }, '').substring(1);
+        return 'Digest ' + paramsnames.reduce(function (s1, ii) { return s1 + ',' + (((ii == 'nc') || (ii == 'qop')) ? (ii + '=' + params[ii]) : (ii + '="' + params[ii] + '"')); }, '').substring(1);
     }
 
     // NODE.js specific private method
@@ -239,8 +236,12 @@ var CreateWsmanComm = function (host, port, user, pass, tls, tlsoptions, mpsConn
                     if (state == 0) { obj.xxOnSocketClosed(); }
                     if (state == 2) {
                         // TLSSocket to encapsulate TLS communication, which then tunneled via SerialTunnel an then wrapped through CIRA APF
-                        var options = { socket: ser, ciphers: 'RSA+AES:!aNULL:!MD5:!DSS', secureOptions: obj.constants.SSL_OP_NO_SSLv2 | obj.constants.SSL_OP_NO_SSLv3 | obj.constants.SSL_OP_NO_COMPRESSION | obj.constants.SSL_OP_CIPHER_SERVER_PREFERENCE, rejectUnauthorized: false };
-                        if (obj.xtlsMethod == 1) { options.secureProtocol = 'TLSv1_method'; }
+                        var options = { socket: ser, ciphers: 'RSA+AES:!aNULL:!MD5:!DSS', secureOptions: obj.constants.SSL_OP_NO_SSLv2 | obj.constants.SSL_OP_NO_SSLv3 | obj.constants.SSL_OP_NO_COMPRESSION | obj.constants.SSL_OP_CIPHER_SERVER_PREFERENCE | obj.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION, rejectUnauthorized: false };
+                        if (obj.xtlsMethod == 1) {
+                            options.secureProtocol = 'TLSv1_method';
+                        } else {
+                            options.minVersion = 'TLSv1';
+                        }
                         if (obj.xtlsoptions) {
                             if (obj.xtlsoptions.ca) { options.ca = obj.xtlsoptions.ca; }
                             if (obj.xtlsoptions.cert) { options.cert = obj.xtlsoptions.cert; }
@@ -277,8 +278,12 @@ var CreateWsmanComm = function (host, port, user, pass, tls, tlsoptions, mpsConn
                 obj.socket.connect(obj.port, obj.host, obj.xxOnSocketConnected);
             } else {
                 // Direct connect with TLS
-                var options = { ciphers: 'RSA+AES:!aNULL:!MD5:!DSS', secureOptions: obj.constants.SSL_OP_NO_SSLv2 | obj.constants.SSL_OP_NO_SSLv3 | obj.constants.SSL_OP_NO_COMPRESSION | obj.constants.SSL_OP_CIPHER_SERVER_PREFERENCE, rejectUnauthorized: false };
-                if (obj.xtlsMethod != 0) { options.secureProtocol = 'TLSv1_method'; }
+                var options = { ciphers: 'RSA+AES:!aNULL:!MD5:!DSS', secureOptions: obj.constants.SSL_OP_NO_SSLv2 | obj.constants.SSL_OP_NO_SSLv3 | obj.constants.SSL_OP_NO_COMPRESSION | obj.constants.SSL_OP_CIPHER_SERVER_PREFERENCE | obj.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION, rejectUnauthorized: false };
+                if (obj.xtlsMethod == 1) {
+                    options.secureProtocol = 'TLSv1_method';
+                } else {
+                    options.minVersion = 'TLSv1';
+                }
                 if (obj.xtlsoptions) {
                     if (obj.xtlsoptions.ca) { options.ca = obj.xtlsoptions.ca; }
                     if (obj.xtlsoptions.cert) { options.cert = obj.xtlsoptions.cert; }
@@ -286,7 +291,7 @@ var CreateWsmanComm = function (host, port, user, pass, tls, tlsoptions, mpsConn
                 }
                 obj.socket = obj.tls.connect(obj.port, obj.host, options, obj.xxOnSocketConnected);
                 obj.socket.setEncoding('binary');
-                obj.socket.setTimeout(60000); // Set socket idle timeout
+                obj.socket.setTimeout(28000); // Set socket idle timeout of 28 seconds
                 obj.socket.on('data', obj.xxOnSocketData);
                 obj.socket.on('close', obj.xxOnSocketClosed);
                 obj.socket.on('timeout', obj.destroy);

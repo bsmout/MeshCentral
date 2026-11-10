@@ -735,7 +735,7 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
     }
 
     /*
-    Intel AMT only recognizes a small subset of keysym characters defined in the keysymdef.h so you don’t need to
+    Intel AMT only recognizes a small subset of keysym characters defined in the keysymdef.h so you dont need to
     implement all the languages (this is taken care by the USB Scancode Extension in RFB4.0 protocol).
     The only subset recognized by the FW is the defined by the following sets : XK_LATIN1 , XK_MISCELLANY, XK_3270, XK_XKB_KEYS, XK_KATAKANA.
     In addition to keysymdef.h symbols there are 6 japanese extra keys that we do support:
@@ -818,7 +818,7 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
             if ((d.length >= 16) && (d.substring(0, 15) == '\0KvmDataChannel')) {
                 if (obj.kvmDataSupported == false) { obj.kvmDataSupported = true; /*console.log('KVM Data Channel Supported.');*/ }
                 if (((obj.onKvmDataAck == -1) && (d.length == 16)) || (d.charCodeAt(15) != 0)) { obj.onKvmDataAck = true; }
-                if (urlvars && urlvars['kvmdatatrace']) { console.log('KVM-DataChannel-Recv(' + (d.length - 16) + '): ' + d.substring(16)); }
+                try { if (urlvars && urlvars['kvmdatatrace']) { console.log('KVM-DataChannel-Recv(' + (d.length - 16) + '): ' + d.substring(16)); } } catch (ex) { }
                 if (d.length >= 16) { obj.onKvmData(d.substring(16)); } // Event the data and ack
                 if ((obj.onKvmDataAck == true) && (obj.onKvmDataPending.length > 0)) { obj.sendKvmData(obj.onKvmDataPending.shift()); } // Send pending data
             } else if ((d.length >= 13) && (d.substring(0, 11) == '\0KvmExtCmd\0')) {
@@ -834,7 +834,7 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
                 if (cmd == 4) { obj.sendKvmExtCmd(3); }
             } else {
                 console.log('Got KVM clipboard data:', d);
-                if (urlvars && urlvars['kvmdatatrace']) { console.log('KVM-ClipBoard-Recv(' + d.length + '): ' + rstr2hex(d) + ', ' + d); }
+                try { if (urlvars && urlvars['kvmdatatrace']) { console.log('KVM-ClipBoard-Recv(' + d.length + '): ' + rstr2hex(d) + ', ' + d); } } catch (ex) { }
             }
         }
         // ###END###{DesktopInband}
@@ -852,7 +852,7 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
         if (obj.onKvmDataAck !== true) {
             obj.onKvmDataPending.push(x);
         } else {
-            if (urlvars && urlvars['kvmdatatrace']) { console.log('KVM-DataChannel-Send(' + x.length + '): ' + x); }
+            try { if (urlvars && urlvars['kvmdatatrace']) { console.log('KVM-DataChannel-Send(' + x.length + '): ' + x); } } catch (ex) { }
             x = '\0KvmDataChannel\0' + x;
             obj.send(String.fromCharCode(6, 0, 0, 0) + IntToStr(x.length) + x);
             obj.onKvmDataAck = false;
@@ -867,7 +867,7 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
 
     // ###BEGIN###{DesktopClipboard}
     obj.sendClipboardData = function (x) {
-        if (urlvars && urlvars['kvmdatatrace']) { console.log('KVM-ClipBoard-Send(' + x.length + '): ' + rstr2hex(x) + ', ' + x); }
+        try { if (urlvars && urlvars['kvmdatatrace']) { console.log('KVM-ClipBoard-Send(' + x.length + '): ' + rstr2hex(x) + ', ' + x); } } catch (ex) { }
         obj.send(String.fromCharCode(6, 0, 0, 0) + IntToStr(x.length) + x);
     }
     // ###END###{DesktopClipboard}
@@ -884,6 +884,8 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
         c.onmouseup = obj.mouseup;
         c.onmousedown = obj.mousedown;
         c.onmousemove = obj.mousemove;
+        //c.onmousewheel = obj.mousewheel;
+        c.onwheel = obj.mousewheel;
         //if (navigator.userAgent.match(/mozilla/i)) c.DOMMouseScroll = obj.xxDOMMouseScroll; else c.onmousewheel = obj.xxMouseWheel;
         _MouseInputGrab = true;
     }
@@ -894,6 +896,8 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
         c.onmousemove = null;
         c.onmouseup = null;
         c.onmousedown = null;
+        //c.onmousewheel = null;
+        c.onwheel = null;
         //if (navigator.userAgent.match(/mozilla/i)) c.DOMMouseScroll = null; else c.onmousewheel = null;
         _MouseInputGrab = false;
     }
@@ -921,6 +925,22 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
 
     // RFB 'PointerEvent' and mouse handlers
     obj.mousedblclick = function (e) { }
+    obj.mousewheel = function (e) {
+        var v = 0;
+        if (typeof e.deltaY == 'number') { v = -1 * e.deltaY; }
+        else if (typeof e.detail == 'number') { v = -1 * e.detail; }
+        else if (typeof e.wheelDelta == 'number') { v = e.wheelDelta; }
+        if (v == 0) return;
+
+        // Reverse mouse wheel if needed
+        if (obj.ReverseMouseWheel) { v = -1 * v; }
+
+        var tmpmask = obj.buttonmask;
+        obj.buttonmask |= (1 << ((v > 0) ? 3 : 4));
+        obj.mousemove(e, 1);
+        obj.buttonmask = tmpmask;
+        return obj.mousemove(e, 1);
+    }
     obj.mousedown = function (e) { obj.buttonmask |= (1 << e.button); return obj.mousemove(e, 1); }
     obj.mouseup = function (e) { obj.buttonmask &= (0xFFFF - (1 << e.button)); return obj.mousemove(e, 1); }
     obj.mousemove = function (e, force) {
@@ -998,7 +1018,7 @@ var CreateAmtRemoteDesktop = function (divid, scrolldiv) {
         obj.recordedData = [];
         obj.recordedStart = Date.now();
         obj.recordedSize = 0;
-        obj.recordedData.push(recordingEntry(1, 0, JSON.stringify({ magic: 'MeshCentralRelaySession', ver: 1, time: new Date().toLocaleString(), protocol: 200, bpp: obj.bpp, graymode: obj.graymode, lowcolor: obj.lowcolor, screenSize: [obj.width, obj.height] }))); // Metadata, 200 = Midstream Intel AMT KVM
+        obj.recordedData.push(recordingEntry(1, 0, JSON.stringify({ magic: 'MeshCentralRelaySession', ver: 1, time: new Date().toLocaleString(), protocol: 102, bpp: obj.bpp, graymode: obj.graymode, lowcolor: obj.lowcolor, screenSize: [obj.width, obj.height] }))); // Metadata, 102 = Midstream Intel AMT KVM
         obj.DeskRecordServerInit = String.fromCharCode((obj.width >> 8), (obj.width & 0xFF), (obj.height >> 8), (obj.height & 0xFF)) + obj.DeskRecordServerInit.substring(4);
         obj.recordedData.push(recordingEntry(2, 1, obj.DeskRecordServerInit)); // This is the server init command
         obj.recordedData.push(recordingEntry(3, 0, atob(obj.CanvasId.toDataURL('image/png').split(',')[1]))); // Take a screen shot

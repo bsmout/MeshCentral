@@ -8,8 +8,10 @@
     <meta name="format-detection" content="telephone=no" />
     <meta name="robots" content="noindex,nofollow" />
     <link type="text/css" href="styles/style.css" media="screen" rel="stylesheet" title="CSS" />
+    {{{customCSSTags}}}
     <link rel="apple-touch-icon" href="/favicon-303x303.png" />
     <script type="text/javascript" src="scripts/common-0.0.1{{min}}.js"></script>
+    {{{customJSTags}}}
     <title>Agent Installation</title>
     <style>
         .tab {
@@ -103,6 +105,7 @@
     </div>
     <script>
         'use strict';
+        var random = '{{{randomlength}}}' // Random length string for BREACH mitigation
         var urlargs = parseUriArgs();
         if (urlargs.key && (isAlphaNumeric(urlargs.key) == false)) { delete urlargs.key; }
         var uiMode = parseInt(getstore('uiMode', 1));

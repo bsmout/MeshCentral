@@ -168,6 +168,7 @@ module.exports.CertificateOperations = function (parent) {
     obj.loadIntelAmtAcmCerts = function (amtacmactivation) {
         if (amtacmactivation == null) return;
         var acmCerts = [], acmmatch = [];
+        amtacmactivation.acmCertErrors = [];
         if (amtacmactivation.certs != null) {
             for (var j in amtacmactivation.certs) {
                 if (j.startsWith('_')) continue; // Skip any certificates that start with underscore as the name.
@@ -175,14 +176,21 @@ module.exports.CertificateOperations = function (parent) {
 
                 if ((typeof acmconfig.certpfx == 'string') && (typeof acmconfig.certpfxpass == 'string')) {
                     // P12 format, certpfx and certpfxpass
-                    try { r = obj.loadPfxCertificate(parent.common.joinPath(obj.parent.datapath, acmconfig.certpfx), acmconfig.certpfxpass); } catch (ex) { console.log(ex); }
-                    if ((r == null) || (r.certs == null) || (r.keys == null) || (r.certs.length < 2) || (r.keys.length != 1)) continue;
+                    const certFilePath = parent.common.joinPath(obj.parent.datapath, acmconfig.certpfx);
+                    try { r = obj.loadPfxCertificate(certFilePath, acmconfig.certpfxpass); } catch (ex) { console.log(ex); }
+                    if ((r == null) || (r.certs == null) || (r.keys == null)) { amtacmactivation.acmCertErrors.push("Unable to load certificate file: " + certFilePath + "."); continue; }
+                    if (r.certs.length < 2) { amtacmactivation.acmCertErrors.push("Certificate file contains less then 2 certificates: " + certFilePath + "."); continue; }
+                    if (r.keys.length != 1) { amtacmactivation.acmCertErrors.push("Certificate file must contain exactly one private key: " + certFilePath + "."); continue; }
                 } else if ((typeof acmconfig.certfiles == 'object') && (typeof acmconfig.keyfile == 'string')) {
                     // PEM format, certfiles and keyfile
                     r = { certs: [], keys: [] };
-                    for (var k in acmconfig.certfiles) { r.certs.push(obj.pki.certificateFromPem(obj.fs.readFileSync(parent.common.joinPath(obj.parent.datapath, acmconfig.certfiles[k])))); }
+                    for (var k in acmconfig.certfiles) {
+                        const certFilePath = parent.common.joinPath(obj.parent.datapath, acmconfig.certfiles[k]);
+                        try { r.certs.push(obj.pki.certificateFromPem(obj.fs.readFileSync(certFilePath))); } catch (ex) { amtacmactivation.acmCertErrors.push("Unable to load certificate file: " + certFilePath + "."); }
+                    }
                     r.keys.push(obj.pki.privateKeyFromPem(obj.fs.readFileSync(parent.common.joinPath(obj.parent.datapath, acmconfig.keyfile))));
-                    if ((r.certs.length < 2) || (r.keys.length != 1)) continue;
+                    if (r.certs.length < 2) { amtacmactivation.acmCertErrors.push("Certificate file contains less then 2 certificates: " + certFilePath + "."); continue; }
+                    if (r.keys.length != 1) { amtacmactivation.acmCertErrors.push("Certificate file must contain exactly one private key: " + certFilePath + "."); continue; }
                 }
 
                 // Reorder the certificates from leaf to root.
@@ -198,12 +206,12 @@ module.exports.CertificateOperations = function (parent) {
                         }
                     }
                 }
-                if (orderingError == true) continue;
+                if (orderingError == true) { amtacmactivation.acmCertErrors.push("Unable to order Intel AMT ACM activation certificates to create a full chain."); continue; }
                 r.certs = or;
 
                 // Check that the certificate and private key match
                 if ((compareArrays(r.certs[0].publicKey.n.data, r.keys[0].n.data) == false) || (compareArrays(r.certs[0].publicKey.e.data, r.keys[0].e.data) == false)) {
-                    parent.addServerWarning('Intel AMT activation certificate provided with a mismatching private key.');
+                    amtacmactivation.acmCertErrors.push("Intel AMT activation certificate provided with a mismatching private key.");
                     continue;
                 }
 
@@ -221,7 +229,7 @@ module.exports.CertificateOperations = function (parent) {
                 for (var k in r.certs[0].extensions) { if (r.certs[0].extensions[k]['2.16.840.1.113741.1.2.3'] == true) { validActivationCert = true; } }
                 var orgName = r.certs[0].subject.getField('OU');
                 if ((orgName != null) && (orgName.value == 'Intel(R) Client Setup Certificate')) { validActivationCert = true; }
-                if (validActivationCert == false) continue;
+                if (validActivationCert == false) { amtacmactivation.acmCertErrors.push("Intel AMT activation certificate must have usage OID \"2.16.840.1.113741.1.2.3\" or organization name \"Intel(R) Client Setup Certificate\"."); continue; }
 
                 // Compute the SHA256 and SHA1 hashes of the root certificate
                 for (var k in r.certs) {
@@ -234,21 +242,30 @@ module.exports.CertificateOperations = function (parent) {
                     md.update(certdata);
                     acmconfig.sha1 = Buffer.from(md.digest().getBytes(), 'binary').toString('hex');
                 }
-                if ((acmconfig.sha1 == null) || (acmconfig.sha256 == null)) continue;
+                if ((acmconfig.sha1 == null) || (acmconfig.sha256 == null)) { amtacmactivation.acmCertErrors.push("Unable to compute Intel AMT activation certificate SHA1 and SHA256 hashes."); continue; }
 
                 // Get the certificate common name
                 var certCommonName = r.certs[0].subject.getField('CN');
-                if (certCommonName == null) continue;
-                var certCommonNameSplit = certCommonName.value.split('.');
-                var topLevel = certCommonNameSplit[certCommonNameSplit.length - 1].toLowerCase();
-                var topLevelNum = TopLevelDomainExtendedSupport[topLevel];
-                if (topLevelNum != null) {
-                    while (certCommonNameSplit.length > topLevelNum) { certCommonNameSplit.shift(); }
-                    acmconfig.cn = certCommonNameSplit.join('.');
-                } else {
+                if (certCommonName == null) { amtacmactivation.acmCertErrors.push("Unable to get Intel AMT activation certificate common name."); continue; }
+                if (amtacmactivation.strictcommonname == true) {
+                    // Use the certificate common name exactly
                     acmconfig.cn = certCommonName.value;
+                } else {
+                    // Check if Intel AMT will allow some flexibility in the certificate common name
+                    var certCommonNameSplit = certCommonName.value.split('.');
+                    var topLevel = certCommonNameSplit[certCommonNameSplit.length - 1].toLowerCase();
+                    var topLevelNum = TopLevelDomainExtendedSupport[topLevel];
+                    if (topLevelNum != null) {
+                        while (certCommonNameSplit.length > topLevelNum) { certCommonNameSplit.shift(); }
+                        acmconfig.cn = certCommonNameSplit.join('.');
+                    } else {
+                        acmconfig.cn = certCommonName.value;
+                    }
                 }
-
+                if(r.certs[0].md){
+                    acmconfig.hashAlgorithm = r.certs[0].md.algorithm;
+                }
+                
                 delete acmconfig.cert;
                 delete acmconfig.certpass;
                 acmconfig.certs = orderedCerts;
@@ -501,16 +518,23 @@ module.exports.CertificateOperations = function (parent) {
 
     // Return a text file from a remote HTTPS server
     obj.loadTextFile = function (url, tag, func) {
-        const u = require('url').parse(url);
+        const u = new URL(url);
         if (u.protocol == 'https:') {
             // Read from HTTPS
             const https = require('https');
-            https.get(url, function(resp) {
+            const options = { timeout: 10000 };
+            if (process.env['HTTPS_PROXY'] || process.env['HTTP_PROXY'] || process.env['https_proxy'] || process.env['http_proxy']) {
+                options.agent = new (require('https-proxy-agent').HttpsProxyAgent)(process.env['HTTPS_PROXY'] || process.env['HTTP_PROXY'] || process.env['https_proxy'] || process.env['http_proxy']);
+            }
+            const req = https.get(url, options, function(resp) {
+                if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); func(url, null, tag); return; }
                 var data = '';
                 resp.on('data', function(chunk) { data += chunk; });
-                resp.on('end', function () { func(url, data, tag); });
-                resp.on('error', function (chunk) { func(url, null, tag); });
-            }).on('error', function (err) { func(url, null, tag); });
+                resp.on('end', function() { func(url, data, tag); });
+                resp.on('error', function() { func(url, null, tag); });
+            });
+            req.on('error', function() { func(url, null, tag); });
+            req.on('timeout', function() { req.destroy(); func(url, null, tag); });
         } else if (u.protocol == 'file:') {
             // Read a file
             obj.fs.readFile(url.substring(7), 'utf8', function (err, data) {
@@ -521,7 +545,7 @@ module.exports.CertificateOperations = function (parent) {
 
     // Return the certificate of the remote HTTPS server
     obj.loadCertificate = function (url, hostname, tag, func) {
-        const u = require('url').parse(url);
+        const u = new URL(url);
         if (u.protocol == 'https:') {
             // Read the certificate from HTTPS
             if (hostname == null) { hostname = u.hostname; }
@@ -619,9 +643,16 @@ module.exports.CertificateOperations = function (parent) {
     };
 
     // Return the SHA384 hash of the certificate public key
-    obj.getPublicKeyHashBinary = function (cert) {
-        var publickey = obj.pki.certificateFromPem(cert).publicKey;
-        return obj.pki.getPublicKeyFingerprint(publickey, { encoding: 'binary', md: obj.forge.md.sha384.create() });
+    obj.getPublicKeyHashBinary = function (pem) {
+        const { X509Certificate } = require('crypto');
+        if (X509Certificate == null) {
+            // This version of NodeJS (<v15.6.0) does not support X509 certs, use Node-Forge instead which only supports RSA certs.
+            return obj.pki.getPublicKeyFingerprint(obj.pki.certificateFromPem(pem).publicKey, { encoding: 'binary', md: obj.forge.md.sha384.create() });
+        } else {
+            // This version of NodeJS supports x509 certificates
+            var cert = new X509Certificate(pem);
+            return obj.crypto.createHash('sha384').update(cert.publicKey.export({ type: ((cert.publicKey.asymmetricKeyType == 'rsa') ? 'pkcs1' : 'spki'), format: 'der' })).digest('binary');
+        }
     };
 
     // Return the SHA384 hash of the certificate, return binary
@@ -706,6 +737,10 @@ module.exports.CertificateOperations = function (parent) {
             extensions.push({ name: 'subjectAltName', altNames: altNames });
         }
 
+        if (extKeyUsage.codeSign === true) {
+            extensions = [{ name: 'basicConstraints', cA: false }, { name: 'keyUsage', keyCertSign: false, digitalSignature: true, nonRepudiation: false, keyEncipherment: false, dataEncipherment: false }, { name: 'extKeyUsage', codeSigning: true }, { name: "subjectKeyIdentifier" }];
+        }
+
         cert.setExtensions(extensions);
         cert.sign(rootcert.key, obj.forge.md.sha384.create());
 
@@ -722,14 +757,17 @@ module.exports.CertificateOperations = function (parent) {
     }
 
     // Return true if the name is found in the certificates names, we support wildcard certificates
-    obj.compareCertificateNames = function(certNames, name) {
+    obj.compareCertificateNames = function (certNames, name) {
         if (certNames == null) return false;
-        if (certNames.indexOf(name.toLowerCase()) >= 0) return true;
-        for (var i in certNames) {
-            if ((certNames[i].startsWith('*.') == true) && (name.endsWith(certNames[i].substring(1)) == true)) { return true; }
-            if (certNames[i].startsWith('http://*.') == true) {
-                if (name.endsWith(certNames[i].substring(8)) == true) { return true; }
-                if ((certNames[i].endsWith('/') == true) && (name.endsWith(certNames[i].substring(8, certNames[i].length - 1)) == true)) { return true; }
+        name = name.toLowerCase();
+        var xcertNames = [];
+        for (var i in certNames) { xcertNames.push(certNames[i].toLowerCase()); }
+        if (xcertNames.indexOf(name) >= 0) return true;
+        for (var i in xcertNames) {
+            if ((xcertNames[i].startsWith('*.') == true) && (name.endsWith(xcertNames[i].substring(1)) == true)) { return true; }
+            if (xcertNames[i].startsWith('http://*.') == true) {
+                if (name.endsWith(xcertNames[i].substring(8)) == true) { return true; }
+                if ((xcertNames[i].endsWith('/') == true) && (name.endsWith(xcertNames[i].substring(8, xcertNames[i].length - 1)) == true)) { return true; }
             }
         }
         return false;
@@ -737,10 +775,100 @@ module.exports.CertificateOperations = function (parent) {
 
     // Return true if the certificate is valid
     obj.checkCertificate = function (pem, key) {
-        var cert = null;
-        try { cert = obj.pki.certificateFromPem(pem); } catch (ex) { return false; } // Unable to decode certificate
-        if (cert.serialNumber == '') return false; // Empty serial number is not allowed.
+        const { X509Certificate } = require('crypto');
+        if (X509Certificate == null) {
+            // This version of NodeJS (<v15.6.0) does not support X509 certs, use Node-Forge instead which only supports RSA certs.
+            var cert = null;
+            try { cert = obj.pki.certificateFromPem(pem); } catch (ex) { return false; } // Unable to decode certificate
+            if (cert.serialNumber == '') return false; // Empty serial number is not allowed.
+        } else {
+            // This version of NodeJS supports x509 certificates
+            try {
+                const cert = new X509Certificate(pem);
+                if ((cert.serialNumber == '') || (cert.serialNumber == null)) return false; // Empty serial number is not allowed.
+            } catch (ex) { return false; } // Unable to decode certificate
+        }
         return true;
+    }
+
+    // Get the Common Name from a certificate
+    obj.getCertificateCommonName = function (pem, field) {
+        if (field == null) { field = 'CN'; }
+        const { X509Certificate } = require('crypto');
+        if (X509Certificate == null) {
+            // This version of NodeJS (<v15.6.0) does not support X509 certs, use Node-Forge instead which only supports RSA certs.
+            var cert = obj.pki.certificateFromPem(pem);
+            if (cert.subject.getField(field) != null) return cert.subject.getField(field).value;
+        } else {
+            // This version of NodeJS supports x509 certificates
+            const subjects = new X509Certificate(pem).subject.split('\n');
+            for (var i in subjects) { if (subjects[i].startsWith(field + '=')) { return subjects[i].substring(field.length + 1); } }
+        }
+        return null;
+    }
+
+    // Get the Issuer Common Name from a certificate
+    obj.getCertificateIssuerCommonName = function (pem, field) {
+        if (field == null) { field = 'CN'; }
+        const { X509Certificate } = require('crypto');
+        if (X509Certificate == null) {
+            // This version of NodeJS (<v15.6.0) does not support X509 certs, use Node-Forge instead which only supports RSA certs.
+            var cert = obj.pki.certificateFromPem(pem);
+            if (cert.issuer.getField(field) != null) return cert.issuer.getField(field).value;
+        } else {
+            // This version of NodeJS supports x509 certificates
+            const subjects = new X509Certificate(pem).issuer.split('\n');
+            for (var i in subjects) { if (subjects[i].startsWith(field + '=')) { return subjects[i].substring(field.length + 1); } }
+        }
+        return null;
+    }
+
+    // Get the Common Name and alternate names from a certificate
+    obj.getCertificateAltNames = function (pem) {
+        const altNamesResults = [];
+        const { X509Certificate } = require('crypto');
+        if (X509Certificate == null) {
+            // This version of NodeJS (<v15.6.0) does not support X509 certs, use Node-Forge instead which only supports RSA certs.
+            var cert = obj.pki.certificateFromPem(pem);
+            if (cert.subject.getField('CN') != null) { altNamesResults.push(cert.subject.getField('CN').value); }
+            var altNames = cert.getExtension('subjectAltName');
+            if (altNames) {
+                for (i = 0; i < altNames.altNames.length; i++) {
+                    if ((altNames.altNames[i] != null) && (altNames.altNames[i].type === 2) && (typeof altNames.altNames[i].value === 'string')) {
+                        var acn = altNames.altNames[i].value.toLowerCase();
+                        if (altNamesResults.indexOf(acn) == -1) { altNamesResults.push(acn); }
+                    }
+                }
+            }
+        } else {
+            // This version of NodeJS supports x509 certificates
+            const cert = new X509Certificate(pem);
+            const subjects = cert.subject.split('\n');
+            for (var i in subjects) { if (subjects[i].startsWith('CN=')) { altNamesResults.push(subjects[i].substring(3)); } }
+            var subjectAltNames = cert.subjectAltName;
+            if (subjectAltNames != null) {
+                subjectAltNames = subjectAltNames.split(', ');
+                for (var i = 0; i < subjectAltNames.length; i++) {
+                    if (subjectAltNames[i].startsWith('DNS:') && altNamesResults.indexOf(subjectAltNames[i].substring(4)) == -1) {
+                        altNamesResults.push(subjectAltNames[i].substring(4));
+                    }
+                }
+            }
+        }
+        return altNamesResults;
+    }
+
+    // Get the expiration time from a certificate
+    obj.getCertificateExpire = function (pem) {
+        const altNamesResults = [];
+        const { X509Certificate } = require('crypto');
+        if (X509Certificate == null) {
+            // This version of NodeJS (<v15.6.0) does not support X509 certs, use Node-Forge instead which only supports RSA certs.
+            return Date.parse(parent.certificateOperations.forge.pki.certificateFromPem(parent.certificates.web.cert).validity.notAfter);
+        } else {
+            // This version of NodeJS supports x509 certificates
+            return Date.parse(new X509Certificate(pem).validTo);
+        }
     }
 
     // Decrypt private key if needed
@@ -772,7 +900,7 @@ module.exports.CertificateOperations = function (parent) {
         var certargs = args.cert;
         var mpscertargs = args.mpscert;
         var strongCertificate = (args.fastcert ? false : true);
-        var rcountmax = 4;
+        var rcountmax = 5;
         var caindex = 1;
         var caok = false;
         var calist = [];
@@ -797,12 +925,14 @@ module.exports.CertificateOperations = function (parent) {
             var xext = xroot.getExtension('keyUsage');
             if ((xext == null) || (xext.keyCertSign !== true) || (xroot.serialNumber == '')) {
                 // We need to fix this certificate
+                parent.common.moveOldFiles(['root-cert-public-backup.crt']);
                 obj.fs.writeFileSync(parent.getConfigFilePath('root-cert-public-backup.crt'), rootCertificate);
                 if (xroot.serialNumber == '') { console.log("Fixing root certificate to add serial number..."); xroot.serialNumber = '' + require('crypto').randomBytes(4).readUInt32BE(0); }
                 if ((xext == null) || (xext.keyCertSign !== true)) { console.log("Fixing root certificate to add signing key usage..."); xroot.setExtensions([{ name: 'basicConstraints', cA: true }, { name: 'subjectKeyIdentifier' }, { name: 'keyUsage', keyCertSign: true }]); }
                 var xrootPrivateKey = obj.pki.privateKeyFromPem(rootPrivateKey);
                 xroot.sign(xrootPrivateKey, obj.forge.md.sha384.create());
                 r.root.cert = obj.pki.certificateToPem(xroot);
+                parent.common.moveOldFiles([parent.getConfigFilePath('root-cert-public.crt')]);
                 try { obj.fs.writeFileSync(parent.getConfigFilePath('root-cert-public.crt'), r.root.cert); } catch (ex) { }
             }
         }
@@ -839,6 +969,15 @@ module.exports.CertificateOperations = function (parent) {
             if (obj.checkCertificate(r.agent.cert, r.agent.key) == false) { delete r.agent; } else { rcount++; }
         }
 
+        // If the code signing certificate already exist, load it
+        if (obj.fileExists("codesign-cert-public.crt") && obj.fileExists("codesign-cert-private.key")) {
+            r.codesign = { cert: obj.fileLoad("codesign-cert-public.crt", 'utf8'), key: obj.decryptPrivateKey(obj.fileLoad("codesign-cert-private.key", 'utf8')) };
+            if (obj.checkCertificate(r.codesign.cert, r.codesign.key) == false) { delete r.codesign; } else { rcount++; }
+        } else {
+            // If we are reading certificates from a database or vault and are just missing the code signing cert, skip it.
+            if (parent.configurationFiles != null) { rcount++; }
+        }
+
         // If the swarm server certificate exist, load it (This is an optional certificate)
         if (obj.fileExists('swarmserver-cert-public.crt') && obj.fileExists('swarmserver-cert-private.key')) {
             r.swarmserver = { cert: obj.fileLoad('swarmserver-cert-public.crt', 'utf8'), key: obj.decryptPrivateKey(obj.fileLoad('swarmserver-cert-private.key', 'utf8')) };
@@ -868,6 +1007,7 @@ module.exports.CertificateOperations = function (parent) {
         var organization = null;
         var forceWebCertGen = 0;
         var forceMpsCertGen = 0;
+        var forceCodeCertGen = 0;
         if (certargs != undefined) {
             var xargs = certargs.split(',');
             if (xargs.length > 0) { commonName = xargs[0]; }
@@ -888,32 +1028,24 @@ module.exports.CertificateOperations = function (parent) {
 
         if (rcount === rcountmax) {
             // Fetch the certificates names for the main certificate
-            r.AmtMpsName = obj.pki.certificateFromPem(r.mps.cert).subject.getField('CN').value;
-            var webCertificate = obj.pki.certificateFromPem(r.web.cert);
-            r.WebIssuer = webCertificate.issuer.getField('CN').value;
-            if (commonName == 'un-configured') { // If the "cert" name is not set, try to use the certificate CN instead (ok if the certificate is not wildcard).
-                commonName = webCertificate.subject.getField('CN').value;
-                if (commonName.startsWith('*.')) { console.log("ERROR: Must specify a server full domain name in Config.json->Settings->Cert when using a wildcard certificate."); process.exit(0); return; }
+            r.AmtMpsName = obj.getCertificateCommonName(r.mps.cert);
+            r.WebIssuer = obj.getCertificateIssuerCommonName(r.web.cert);
+            r.CommonName = obj.getCertificateCommonName(r.web.cert);
+            r.CommonNames = obj.getCertificateAltNames(r.web.cert);
+            r.RootName = obj.getCertificateCommonName(r.root.cert);
+            r.CodeCertName = obj.getCertificateCommonName(r.codesign.cert);
+
+            // If the "cert" name is not set, try to use the certificate CN instead (ok if the certificate is not wildcard).
+            if (commonName == 'un-configured') {
+                if (r.CommonName.startsWith('*.')) { console.log("ERROR: Must specify a server full domain name in Config.json->Settings->Cert when using a wildcard certificate."); process.exit(0); return; }
+                commonName = r.CommonName;
             }
-            r.CommonName = commonName;
-            r.CommonNames = [commonName.toLowerCase()];
-            var altNames = webCertificate.getExtension('subjectAltName');
-            if (altNames) {
-                for (i = 0; i < altNames.altNames.length; i++) {
-                    if ((altNames.altNames[i] != null) && (altNames.altNames[i].type === 2) && (typeof altNames.altNames[i].value === 'string')) {
-                        var acn = altNames.altNames[i].value.toLowerCase();
-                        if (r.CommonNames.indexOf(acn) == -1) { r.CommonNames.push(acn); }
-                    }
-                }
-            }
-            var rootCertificate = obj.pki.certificateFromPem(r.root.cert);
-            r.RootName = rootCertificate.subject.getField('CN').value;
         }
 
         // Look for domains that have DNS names and load their certificates
         r.dns = {};
         for (i in config.domains) {
-            if ((i != "") && (config.domains[i] != null) && (config.domains[i].dns != null)) {
+            if ((i != '') && (config.domains[i] != null) && (config.domains[i].dns != null)) {
                 dnsname = config.domains[i].dns;
                 // Check if this domain matches a parent wildcard cert, if so, use the parent cert.
                 if (obj.compareCertificateNames(r.CommonNames, dnsname) == true) {
@@ -926,6 +1058,7 @@ module.exports.CertificateOperations = function (parent) {
                             config.domains[i].certs = r.dns[i];
                         } else {
                             console.log("WARNING: File \"webserver-" + i + "-cert-public.crt\" missing, domain \"" + i + "\" will not work correctly.");
+                            rcountmax++;
                         }
                     } else {
                         // If the web certificate already exist, load it. Load both certificate and private key
@@ -951,25 +1084,36 @@ module.exports.CertificateOperations = function (parent) {
             }
         }
 
+        // If we have all the certificates we need, stop here.
         if (rcount === rcountmax) {
             if ((certargs == null) && (mpscertargs == null)) { if (func != undefined) { func(r); } return r; } // If no certificate arguments are given, keep the certificate
-            var xcountry, xcountryField = webCertificate.subject.getField('C');
-            if (xcountryField != null) { xcountry = xcountryField.value; }
-            var xorganization, xorganizationField = webCertificate.subject.getField('O');
-            if (xorganizationField != null) { xorganization = xorganizationField.value; }
+            const xcountry = obj.getCertificateCommonName(r.web.cert, 'C');
+            const xorganization = obj.getCertificateCommonName(r.web.cert, 'O');
             if (certargs == null) { commonName = r.CommonName; country = xcountry; organization = xorganization; }
 
-            // Check if we have correct certificates
-            if (obj.compareCertificateNames(r.CommonNames, commonName) == false) { forceWebCertGen = 1; }
+            // Check if we have correct certificates.
+            if (obj.compareCertificateNames(r.CommonNames, commonName) == false) { console.log("Error: " + commonName + " does not match name in TLS certificate: " + r.CommonNames.join(', ')); forceWebCertGen = 1; } else { r.CommonName = commonName; }
             if (r.AmtMpsName != mpsCommonName) { forceMpsCertGen = 1; }
+            if (r.CodeCertName.startsWith(commonName) === false) { forceCodeCertGen = 1; }
+            if (args.keepcerts == true) { forceWebCertGen = 0; forceMpsCertGen = 0; forceCodeCertGen = 0; r.CommonName = commonName; }
 
             // If the certificates matches what we want, use them.
-            if ((forceWebCertGen == 0) && (forceMpsCertGen == 0)) {
-                if (func !== undefined) { func(r); }
+            if ((forceWebCertGen == 0) && (forceMpsCertGen == 0) && (forceCodeCertGen == 0)) {
+                if (func !== null) { func(r); }
                 return r;
             }
         }
-        if (parent.configurationFiles != null) { console.log("Error: Vault/Database missing some certificates."); process.exit(0); return null; }
+
+        if (parent.configurationFiles != null) {
+            console.log("Error: Vault/Database missing some certificates.");
+            if (r.root == null) { console.log('  Code signing certificate is missing.'); }
+            if (r.web == null) { console.log('  HTTPS web certificate is missing.'); }
+            if (r.mps == null) { console.log('  Intel AMT MPS certificate is missing.'); }
+            if (r.agent == null) { console.log('  Server agent authentication certificate is missing.'); }
+            if (r.codesign == null) { console.log('  Agent code signing certificate is missing.'); }
+            process.exit(0);
+            return null;
+        }
 
         console.log("Generating certificates, may take a few minutes...");
         parent.updateServerState('state', 'generatingcertificates');
@@ -988,9 +1132,16 @@ module.exports.CertificateOperations = function (parent) {
         if (r.root == null) {
             // If the root certificate does not exist, create one
             console.log("Generating root certificate...");
-            rootCertAndKey = obj.GenerateRootCertificate(true, 'MeshCentralRoot', null, null, strongCertificate);
+            if (typeof args.rootcertcommonname == 'string') {
+                // If a root certificate common name is specified, use it.
+                rootCertAndKey = obj.GenerateRootCertificate(false, args.rootcertcommonname, null, null, strongCertificate);
+            } else {
+                // A root certificate common name is not specified, use the default one.
+                rootCertAndKey = obj.GenerateRootCertificate(true, 'MeshCentralRoot', null, null, strongCertificate);
+            }
             rootCertificate = obj.pki.certificateToPem(rootCertAndKey.cert);
             rootPrivateKey = obj.pki.privateKeyToPem(rootCertAndKey.key);
+            parent.common.moveOldFiles([parent.getConfigFilePath('root-cert-public.crt'), parent.getConfigFilePath('root-cert-private.key')]);
             obj.fs.writeFileSync(parent.getConfigFilePath('root-cert-public.crt'), rootCertificate);
             obj.fs.writeFileSync(parent.getConfigFilePath('root-cert-private.key'), rootPrivateKey);
         } else {
@@ -1003,11 +1154,12 @@ module.exports.CertificateOperations = function (parent) {
 
         // If the web certificate does not exist, create one
         var webCertAndKey, webCertificate, webPrivateKey;
-        if ((r.web == null) || (forceWebCertGen == 1)) {
+        if ((r.web == null) || (forceWebCertGen === 1)) {
             console.log("Generating HTTPS certificate...");
             webCertAndKey = obj.IssueWebServerCertificate(rootCertAndKey, false, commonName, country, organization, null, strongCertificate);
             webCertificate = obj.pki.certificateToPem(webCertAndKey.cert);
             webPrivateKey = obj.pki.privateKeyToPem(webCertAndKey.key);
+            parent.common.moveOldFiles([parent.getConfigFilePath('webserver-cert-public.crt'), parent.getConfigFilePath('webserver-cert-private.key')]);
             obj.fs.writeFileSync(parent.getConfigFilePath('webserver-cert-public.crt'), webCertificate);
             obj.fs.writeFileSync(parent.getConfigFilePath('webserver-cert-private.key'), webPrivateKey);
         } else {
@@ -1021,7 +1173,8 @@ module.exports.CertificateOperations = function (parent) {
                 webPrivateKey = r.web.key;
             }
         }
-        var webIssuer = webCertAndKey.cert.issuer.getField('CN').value;
+        var webIssuer = null;
+        if (webCertAndKey.cert.issuer.getField('CN') != null) { webIssuer = webCertAndKey.cert.issuer.getField('CN').value; }
 
         // If the mesh agent server certificate does not exist, create one
         var agentCertAndKey, agentCertificate, agentPrivateKey;
@@ -1030,6 +1183,7 @@ module.exports.CertificateOperations = function (parent) {
             agentCertAndKey = obj.IssueWebServerCertificate(rootCertAndKey, true, 'MeshCentralAgentServer', country, organization, { }, strongCertificate);
             agentCertificate = obj.pki.certificateToPem(agentCertAndKey.cert);
             agentPrivateKey = obj.pki.privateKeyToPem(agentCertAndKey.key);
+            parent.common.moveOldFiles([parent.getConfigFilePath('agentserver-cert-public.crt'), parent.getConfigFilePath('agentserver-cert-private.key')]);
             obj.fs.writeFileSync(parent.getConfigFilePath('agentserver-cert-public.crt'), agentCertificate);
             obj.fs.writeFileSync(parent.getConfigFilePath('agentserver-cert-private.key'), agentPrivateKey);
         } else {
@@ -1039,13 +1193,31 @@ module.exports.CertificateOperations = function (parent) {
             agentPrivateKey = r.agent.key;
         }
 
+        // If the code signing certificate does not exist, create one
+        var codesignCertAndKey, codesignCertificate, codesignPrivateKey;
+        if ((r.codesign == null) || (forceCodeCertGen === 1)) {
+            console.log("Generating code signing certificate...");
+            codesignCertAndKey = obj.IssueWebServerCertificate(rootCertAndKey, true, commonName, country, organization, { codeSign: true }, strongCertificate);
+            codesignCertificate = obj.pki.certificateToPem(codesignCertAndKey.cert);
+            codesignPrivateKey = obj.pki.privateKeyToPem(codesignCertAndKey.key);
+            parent.common.moveOldFiles([parent.getConfigFilePath('codesign-cert-public.crt'), parent.getConfigFilePath('codesign-cert-private.key')]);
+            obj.fs.writeFileSync(parent.getConfigFilePath('codesign-cert-public.crt'), codesignCertificate);
+            obj.fs.writeFileSync(parent.getConfigFilePath('codesign-cert-private.key'), codesignPrivateKey);
+        } else {
+            // Keep the code signing certificate we have
+            codesignCertAndKey = { cert: obj.pki.certificateFromPem(r.codesign.cert), key: obj.pki.privateKeyFromPem(r.codesign.key) };
+            codesignCertificate = r.codesign.cert;
+            codesignPrivateKey = r.codesign.key;
+        }
+
         // If the Intel AMT MPS certificate does not exist, create one
         var mpsCertAndKey, mpsCertificate, mpsPrivateKey;
-        if ((r.mps == null) || (forceMpsCertGen == 1)) {
+        if ((r.mps == null) || (forceMpsCertGen === 1)) {
             console.log("Generating Intel AMT MPS certificate...");
             mpsCertAndKey = obj.IssueWebServerCertificate(rootCertAndKey, false, mpsCommonName, mpsCountry, mpsOrganization, null, false);
             mpsCertificate = obj.pki.certificateToPem(mpsCertAndKey.cert);
             mpsPrivateKey = obj.pki.privateKeyToPem(mpsCertAndKey.key);
+            parent.common.moveOldFiles([parent.getConfigFilePath('mpsserver-cert-public.crt'), parent.getConfigFilePath('mpsserver-cert-private.key')]);
             obj.fs.writeFileSync(parent.getConfigFilePath('mpsserver-cert-public.crt'), mpsCertificate);
             obj.fs.writeFileSync(parent.getConfigFilePath('mpsserver-cert-private.key'), mpsPrivateKey);
         } else {
@@ -1055,11 +1227,11 @@ module.exports.CertificateOperations = function (parent) {
             mpsPrivateKey = r.mps.key;
         }
 
-        r = { root: { cert: rootCertificate, key: rootPrivateKey }, web: { cert: webCertificate, key: webPrivateKey, ca: [] }, webdefault: { cert: webCertificate, key: webPrivateKey, ca: [] }, mps: { cert: mpsCertificate, key: mpsPrivateKey }, agent: { cert: agentCertificate, key: agentPrivateKey }, ca: calist, CommonName: commonName, RootName: rootName, AmtMpsName: mpsCommonName, dns: {}, WebIssuer: webIssuer };
+        r = { root: { cert: rootCertificate, key: rootPrivateKey }, web: { cert: webCertificate, key: webPrivateKey, ca: [] }, webdefault: { cert: webCertificate, key: webPrivateKey, ca: [] }, mps: { cert: mpsCertificate, key: mpsPrivateKey }, agent: { cert: agentCertificate, key: agentPrivateKey }, codesign: { cert: codesignCertificate, key: codesignPrivateKey }, ca: calist, CommonName: commonName, RootName: rootName, AmtMpsName: mpsCommonName, dns: {}, WebIssuer: webIssuer };
 
         // Fetch the certificates names for the main certificate
         var webCertificate = obj.pki.certificateFromPem(r.web.cert);
-        r.WebIssuer = webCertificate.issuer.getField('CN').value;
+        if (webCertificate.issuer.getField('CN') != null) { r.WebIssuer = webCertificate.issuer.getField('CN').value; } else { r.WebIssuer = null; }
         r.CommonName = webCertificate.subject.getField('CN').value;
         if (r.CommonName.startsWith('*.')) {
             if (commonName.indexOf('.') == -1) { console.log("ERROR: Must specify a server full domain name in Config.json->Settings->Cert when using a wildcard certificate."); process.exit(0); return; }
@@ -1081,7 +1253,7 @@ module.exports.CertificateOperations = function (parent) {
 
         // Look for domains with DNS names that have no certificates and generated them.
         for (i in config.domains) {
-            if ((i != "") && (config.domains[i] != null) && (config.domains[i].dns != null)) {
+            if ((i != '') && (config.domains[i] != null) && (config.domains[i].dns != null)) {
                 dnsname = config.domains[i].dns;
                 // Check if this domain matches a parent wildcard cert, if so, use the parent cert.
                 if (obj.compareCertificateNames(r.CommonNames, dnsname) == true) {
@@ -1094,6 +1266,7 @@ module.exports.CertificateOperations = function (parent) {
                             var xwebCertAndKey = obj.IssueWebServerCertificate(rootCertAndKey, false, dnsname, country, organization, null, strongCertificate);
                             var xwebCertificate = obj.pki.certificateToPem(xwebCertAndKey.cert);
                             var xwebPrivateKey = obj.pki.privateKeyToPem(xwebCertAndKey.key);
+                            parent.common.moveOldFiles([ parent.getConfigFilePath('webserver-' + i + '-cert-public.crt'), parent.getConfigFilePath('webserver-' + i + '-cert-private.key') ]);
                             obj.fs.writeFileSync(parent.getConfigFilePath('webserver-' + i + '-cert-public.crt'), xwebCertificate);
                             obj.fs.writeFileSync(parent.getConfigFilePath('webserver-' + i + '-cert-private.key'), xwebPrivateKey);
                             r.dns[i] = { cert: xwebCertificate, key: xwebPrivateKey };
@@ -1245,20 +1418,15 @@ module.exports.CertificateOperations = function (parent) {
 
     // Perform any general operation
     obj.acceleratorPerformOperation = function (operation, data, tag, func) {
-        if (acceleratorTotalCount <= 1) {
-            // No accelerators available
-            require(program).processMessage({ action: operation, data: data, tag: tag, func: func });
+        var acc = obj.getAccelerator();
+        if (acc == null) {
+            // Add to pending accelerator workload
+            acceleratorPerformSignaturePushFuncCall++;
+            pendingAccelerator.push({ action: operation, data: data, tag: tag, func: func });
         } else {
-            var acc = obj.getAccelerator();
-            if (acc == null) {
-                // Add to pending accelerator workload
-                acceleratorPerformSignaturePushFuncCall++;
-                pendingAccelerator.push({ action: operation, data: data, tag: tag, func: func });
-            } else {
-                // Send to accelerator now
-                acceleratorPerformSignatureRunFuncCall++;
-                acc.send(acc.x = { action: operation, data: data, tag: tag, func: func });
-            }
+            // Send to accelerator now
+            acceleratorPerformSignatureRunFuncCall++;
+            acc.send(acc.x = { action: operation, data: data, tag: tag, func: func });
         }
     };
 

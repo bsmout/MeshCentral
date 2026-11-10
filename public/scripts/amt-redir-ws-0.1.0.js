@@ -36,6 +36,7 @@ var CreateAmtRedirect = function (module, authCookie) {
         obj.port = port;
         obj.user = user;
         obj.pass = pass;
+        obj.tls = tls;
         obj.connectstate = 0;
         obj.inDataCount = 0;
         var url = window.location.protocol.replace('http', 'ws') + '//' + window.location.host + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/webrelay.ashx?p=2&host=' + host + '&port=' + port + '&tls=' + tls + ((user == '*') ? '&serverauth=1' : '') + ((typeof pass === 'undefined') ? ('&serverauth=1&user=' + user) : ''); // The 'p=2' indicates to the relay that this is a REDIRECTION session
@@ -108,6 +109,7 @@ var CreateAmtRedirect = function (module, authCookie) {
                             // Good Digest Auth (With cnonce and all)
                             obj.xxSend(String.fromCharCode(0x13, 0x00, 0x00, 0x00, 0x04) + IntToStrX(obj.user.length + obj.authuri.length + 8) + String.fromCharCode(obj.user.length) + obj.user + String.fromCharCode(0x00, 0x00) + String.fromCharCode(obj.authuri.length) + obj.authuri + String.fromCharCode(0x00, 0x00, 0x00, 0x00));
                         }
+                        /*
                         else if (authData.indexOf(3) >= 0) {
                             // Bad Digest Auth (Not sure why this is supported, cnonce is not used!)
                             obj.xxSend(String.fromCharCode(0x13, 0x00, 0x00, 0x00, 0x03) + IntToStrX(obj.user.length + obj.authuri.length + 7) + String.fromCharCode(obj.user.length) + obj.user + String.fromCharCode(0x00, 0x00) + String.fromCharCode(obj.authuri.length) + obj.authuri + String.fromCharCode(0x00, 0x00, 0x00));
@@ -116,6 +118,7 @@ var CreateAmtRedirect = function (module, authCookie) {
                             // Basic Auth (Probably a good idea to not support this unless this is an old version of Intel AMT)
                             obj.xxSend(String.fromCharCode(0x13, 0x00, 0x00, 0x00, 0x01) + IntToStrX(obj.user.length + obj.pass.length + 2) + String.fromCharCode(obj.user.length) + obj.user + String.fromCharCode(obj.pass.length) + obj.pass);
                         }
+                        */
                         else obj.Stop(2);
                     } else if (((authType == 3) || (authType == 4)) && (status == 1)) {
                         var curptr = 0;

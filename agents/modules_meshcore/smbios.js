@@ -43,6 +43,8 @@ function SMBiosTables()
     }
     if (process.platform == 'linux') {
         this._canonicalizeData = function _canonicalizeData(data) {
+            // Strings: hex-dump lines up to the 00 terminator, then ONE decoded line. dmidecode 3.x prints
+            // the decoded line unquoted, so skip it by position - a string like "20" or "008689" looks like hex.
             var lines = data.toString().split('Header and Data:\x0A');
             var MemoryStream = require('MemoryStream');
             var ms = new MemoryStream();
@@ -53,12 +55,21 @@ function SMBiosTables()
                 ms.write(Buffer.from(header, 'hex'));
                 if (tokens.length > 1) {
                     var strings = tokens[1].split('\x0A\x0A')[0].split('\x0A');
-                    var stringsFinal = [];
+                    var hex = '';
+                    var inHex = true;
                     for (var strx in strings) {
-                        var tmp = strings[strx].trim().replaceAll(' ', '').replaceAll('\x09', '');
-                        if (!(tmp[0] == '"')) { stringsFinal.push(tmp); }
+                        var line = strings[strx].trim();
+                        if (inHex) {
+                            var compact = line.replaceAll(' ', '').replaceAll('\x09', '');
+                            if (compact.length > 0 && /^([0-9a-fA-F]{2} )*[0-9a-fA-F]{2}$/.test(line)) {
+                                hex += compact;
+                                if (compact.slice(-2) == '00') { inHex = false; }
+                                continue;
+                            }
+                        }
+                        inHex = true;
                     }
-                    ms.write(Buffer.from(stringsFinal.join(''), 'hex'));
+                    ms.write(Buffer.from(hex, 'hex'));
                     ms.write(Buffer.from('00', 'hex'));
                 }
                 else {
@@ -178,7 +189,7 @@ function SMBiosTables()
         }
         try
         {
-            r.systemSlots = this.systemInfo(data);
+            r.systemSlots = this.systemSlots(data);
         }
         catch(e)
         {
@@ -269,15 +280,18 @@ function SMBiosTables()
     this.amtInfo = function amtInfo(data) {
         if (!data) { throw ('no data'); }
         var retVal = { AMT: false };
-        if (data[130] && data[130].peek().slice(0, 4).toString() == '$AMT') {
+        if (data[130] && data[130].peek().slice(0, 4).toString() == '$AMT')
+        {
             var amt = data[130].peek();
             retVal.AMT = amt[4] ? true : false;
-            if (retVal.AMT) {
+            if (retVal.AMT)
+            {
                 retVal.enabled = amt[5] ? true : false;
                 retVal.storageRedirection = amt[6] ? true : false;
                 retVal.serialOverLan = amt[7] ? true : false;
                 retVal.kvm = amt[14] ? true : false;
-                if (data[131].peek() && data[131].peek().slice(52, 56).toString() == 'vPro') {
+                if (data[131] && data[131].peek() && data[131].peek().slice(52, 56).toString() == 'vPro')
+                {
                     var settings = data[131].peek();
                     if (settings[0] & 0x04) { retVal.TXT = (settings[0] & 0x08) ? true : false; }
                     if (settings[0] & 0x10) { retVal.VMX = (settings[0] & 0x20) ? true : false; }
@@ -293,6 +307,14 @@ function SMBiosTables()
                     //console.log(lan.readUInt16LE(3));
                     //retVal.WLAN = (lan.readUInt16LE(3) & 0x07).toString() + '/' + ((lan.readUInt16LE(3) & 0xF8) >> 3).toString() + '/' + (lan.readUInt16LE(3) >> 8).toString();
                 }
+            }
+        }
+        if (!retVal.AMT)
+        {
+            if (data[131] && data[131].peek() && data[131].peek().slice(52, 56).toString() == 'vPro')
+            {
+                var settings = data[131].peek();
+                if ((settings[20] & 0x08) == 0x08) { retVal.AMT = true; }
             }
         }
         return (retVal);

@@ -7,6 +7,10 @@
 // Polyfill Uint8Array.slice() for IE
 if (!Uint8Array.prototype.slice) { Object.defineProperty(Uint8Array.prototype, 'slice', { value: function (begin, end) { return new Uint8Array(Array.prototype.slice.call(this, begin, end)); } }); }
 
+function isWindowsBrowser() {
+    return navigator && !!(/win/i).exec(navigator.platform);
+}
+
 // Construct a MeshServer object
 var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
     var obj = {}
@@ -37,6 +41,10 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
     obj.localKeyMap = true;
     obj.remoteKeyMap = false; // If false, the remote keyboard mapping is not used.
     obj.pressedKeys = [];
+    obj._altGrArmed = false;       // Windows AltGr detection
+    obj._altGrTimeout = 0;
+    obj._altGrDeferredDown = false; // a ControlLeft keydown is held back pending AltGr detection
+    obj.isWindowsBrowser = isWindowsBrowser();
 
     obj.sessionid = 0;
     obj.username;
@@ -46,11 +54,16 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
     obj.ScalingLevel = 1024;
     obj.FrameRateTimer = 100;
     obj.SwapMouse = false;
+    obj.UseExtendedKeyFlag = true;
     obj.FirstDraw = false;
 
     // Remote user mouse and keyboard lock
     obj.onRemoteInputLockChanged = null;
     obj.RemoteInputLock = null;
+
+    // Remote keyboard state
+    obj.onKeyboardStateChanged = null;
+    obj.KeyboardState = 0; // 1 = NumLock, 2 = ScrollLock, 4 = CapsLock
 
     obj.ScreenWidth = 960;
     obj.ScreenHeight = 701;
@@ -131,7 +144,7 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
                 obj.PendingOperations.push([r, 0]);
             }
         }
-        tile.error = function () { console.log('DecodeTileError'); }
+        tile.onerror = function () { console.log('DecodeTileError'); obj.PendingOperations.push([r, 0]); if (obj.State != 0) { while (obj.DoPendingOperations()) { } } }
     }
 
     obj.DoPendingOperations = function () {
@@ -143,7 +156,6 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
                 if (Msg[1] == 1) { obj.ProcessCopyRectMsg(Msg[2]); }
                 else if (Msg[1] == 2) { obj.Canvas.drawImage(Msg[2], obj.rotX(Msg[3], Msg[4]), obj.rotY(Msg[3], Msg[4])); delete Msg[2]; }
                 obj.PendingOperations.splice(i, 1);
-                delete Msg;
                 obj.TilesDrawn++;
                 if ((obj.TilesDrawn == obj.tilesReceived) && (obj.KillDraw < obj.TilesDrawn)) { obj.KillDraw = obj.TilesDrawn = obj.tilesReceived = 0; }
                 return true;
@@ -211,10 +223,14 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
 
         // Record the command if needed
         if (obj.recordedData != null) {
+            // Fix for view being too large for String.fromCharCode.apply()
+            var chunkSize = 10000;
+            let result = '';
+            for (let i = 0; i < view.length; i += chunkSize) { result += String.fromCharCode.apply(null, view.slice(i, i + chunkSize)); }
             if (cmdsize > 65000) {
-                obj.recordedData.push(recordingEntry(2, 1, obj.shortToStr(27) + obj.shortToStr(8) + obj.intToStr(cmdsize) + obj.shortToStr(cmd) + obj.shortToStr(0) + obj.shortToStr(0) + obj.shortToStr(0) + String.fromCharCode.apply(null, view)));
+                obj.recordedData.push(recordingEntry(2, 1, obj.shortToStr(27) + obj.shortToStr(8) + obj.intToStr(cmdsize) + obj.shortToStr(cmd) + obj.shortToStr(0) + obj.shortToStr(0) + obj.shortToStr(0) + result));
             } else {
-                obj.recordedData.push(recordingEntry(2, 1, String.fromCharCode.apply(null, view)));
+                obj.recordedData.push(recordingEntry(2, 1, result));
             }
         }
 
@@ -263,6 +279,12 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
                 var str = String.fromCharCode.apply(null, view.slice(4));
                 console.log('Got KVM Message: ' + str);
                 if (obj.onMessage != null) obj.onMessage(str, obj);
+                break;
+            case 18: // MNG_KVM_KEYSTATE
+                if ((cmdsize != 5) || (obj.KeyboardState == view[4])) break;
+                obj.KeyboardState = view[4]; // 1 = NumLock, 2 = ScrollLock, 4 = CapsLock
+                if (obj.onKeyboardStateChanged) { obj.onKeyboardStateChanged(obj, obj.KeyboardState); }
+                console.log('MNG_KVM_KEYSTATE:' + ((obj.KeyboardState & 1) ? ' NumLock' : '') + ((obj.KeyboardState & 2) ? ' ScrollLock' : '') + ((obj.KeyboardState & 4) ? ' CapsLock' : ''));
                 break;
             case 65: // Alert
                 var str = String.fromCharCode.apply(null, view.slice(4));
@@ -386,14 +408,31 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
         return convertKeyCodeTable[e.code];
     }
 
+    var extendedKeyTable = ['AltRight', 'ControlRight', 'Home', 'End', 'Insert', 'Delete', 'PageUp', 'PageDown', 'NumpadDivide', 'NumpadEnter', 'NumLock', 'Pause'];
     obj.SendKeyMsg = function (action, event) {
         if (action == null) return;
         if (!event) { event = window.event; }
-        if (event.code && (obj.localKeyMap == false)) {
+
+        var extendedKey = false; // Test feature, add ?extkeys=1 to url to use.
+
+        if ((obj.UseExtendedKeyFlag || (urlargs.extkeys == 1)) && (typeof event.code == 'string') && (event.code.startsWith('Arrow') || (extendedKeyTable.indexOf(event.code) >= 0))) {
+            extendedKey = true; 
+        }
+
+        if (obj.isWindowsBrowser) {
+            if( obj.checkAltGr(obj, event, action) ) {
+              return;
+            }; 
+        }
+
+        if ((obj.UseExtendedKeyFlag || (urlargs.extkeys == 1)) && ((event.code == 'ShiftRight') || ((event.keyCode == 16) && (event.location == 2)))) {
+            // Right Shift has its own scan code, not an extended Left Shift scan code.
+            obj.SendKeyMsgKC(action, 161, false);
+        } else if ((extendedKey == false) && event.code && (event.code.startsWith('NumPad') == false) && (obj.localKeyMap == false)) {
             // Convert "event.code" into a scancode. This works the same regardless of the keyboard language.
             // Older browsers will not support this.
             var kc = convertKeyCode(event);
-            if (kc != null) { obj.SendKeyMsgKC(action, kc); }
+            if (kc != null) { obj.SendKeyMsgKC(action, kc, extendedKey); }
         } else {
             // Use this keycode, this works best with "US-EN" keyboards.
             // Older browser support this.
@@ -401,8 +440,61 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
             if (kc == 0x3B) { kc = 0xBA; } // Fix the ';' key
             else if (kc == 173) { kc = 189; } // Fix the '-' key for Firefox
             else if (kc == 61) { kc = 187; } // Fix the '=' key for Firefox
-            obj.SendKeyMsgKC(action, kc);
+            obj.SendKeyMsgKC(action, kc, extendedKey);
         }
+    }
+
+    const ControlLeftKc = 17;
+    const AltGrKc = 225;
+    //return true: Key is alredy handled. 
+    obj.checkAltGr = function (obj, event, action) {
+        // Windows doesn't have a proper AltGr, but handles it using
+        // fake Ctrl+Alt. However the remote end might not be Windows,
+        // so we need to merge those into a single AltGr event. We
+        // detect this case by seeing the two key events directly after
+        // each other with a very short time between them (<50ms).
+        if (obj._altGrArmed) {
+            obj._altGrArmed = false;
+            clearTimeout(obj._altGrTimeout);
+            var deferredCtrlDown = obj._altGrDeferredDown;
+            obj._altGrDeferredDown = false;
+
+            if ((event.code === "AltRight") &&  ((event.timeStamp - obj._altGrCtrlTime) < 50)) {
+                //AltGr detected.
+                obj.SendKeyMsgKC( action, AltGrKc, false);
+                return true;
+            } 
+
+            // Not an AltGr sequence: flush the deferred ControlLeft keydown BEFORE processing
+            // this event, so the remote sees Ctrl go down first. Previously it was dropped
+            // here, which lost fast Left-Ctrl taps and delivered "C before Ctrl" on a quick
+            // Ctrl+C (issue #6491).
+            if (deferredCtrlDown) {
+                obj.SendKeyMsgKC( 1, ControlLeftKc, false);
+            }
+        }
+
+        // Possible start of AltGr sequence? 
+        // NOTE: `in` on an array tests INDICES, not membership — must be indexOf. Arming on
+        // keyup (no timer, falls through to return false so the keyup still sends) is
+        // intentional: it lets the AltRight keyup that follows merge into an AltGr keyup.
+        if ((event.code === "ControlLeft") && (obj.pressedKeys.indexOf(ControlLeftKc) == -1)) {
+          obj._altGrArmed = true;
+            obj._altGrCtrlTime = event.timeStamp;
+          if( action == 1 ) {
+            obj._altGrDeferredDown = true;
+            obj._altGrTimeout = setTimeout(obj._handleAltGrTimeout.bind(obj), 100);
+            return true;
+          }
+        }
+        return false;
+    }
+
+    obj._handleAltGrTimeout = function () { //Windows and no Ctrl+Alt -> send only Ctrl.
+        obj._altGrArmed = false;
+        obj._altGrDeferredDown = false;
+        clearTimeout(obj._altGrTimeout);
+        obj.SendKeyMsgKC( 1, ControlLeftKc, false); // (KeyDown, "ControlLeft", false)
     }
 
     // Send remote input lock. 0 = Unlock, 1 = Lock, 2 = Query
@@ -412,9 +504,9 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
         if (obj.State == 3) obj.send(String.fromCharCode(0x00, 0x11) + obj.shortToStr(4 + msg.length) + msg); // 0x11 = 17 MNG_KVM_MESSAGE
     }
 
-    obj.SendKeyMsgKC = function (action, kc) {
+    obj.SendKeyMsgKC = function (action, kc, extendedKey) {
         if (obj.State != 3) return;
-        if (typeof action == 'object') { for (var i in action) { obj.SendKeyMsgKC(action[i][0], action[i][1]); } }
+        if (typeof action == 'object') { for (var i in action) { obj.SendKeyMsgKC(action[i][0], action[i][1], action[i][2]); } }
         else {
             if (action == 1) { // Key Down
                 if (obj.pressedKeys.indexOf(kc) == -1) { obj.pressedKeys.unshift(kc); } // Add key press to start of array
@@ -422,9 +514,11 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
                 var i = obj.pressedKeys.indexOf(kc);
                 if (i != -1) { obj.pressedKeys.splice(i, 1); } // Remove the key press from the pressed array
             }
-
             if (obj.debugmode > 0) { console.log('Sending Key ' + kc + ', action ' + action); }
-            obj.send(String.fromCharCode(0x00, obj.InputType.KEY, 0x00, 0x06, (action - 1), kc));
+
+            var up = (action - 1);
+            if (extendedKey) { if (up == 1) { up = 3; } else { up = 4; } }
+            obj.send(String.fromCharCode(0x00, obj.InputType.KEY, 0x00, 0x06, up, kc));
         }
     }
 
@@ -438,7 +532,7 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
 
     obj.SendKeyUnicode = function (action, val) {
         if (obj.State != 3) return;
-        if (obj.debugmode > 0) { console.log('Sending UnicodeKey ' + val); }
+        if (obj.debugmode > 0) { console.log('Sending UnicodeKey ' + val + ', action ' + action); }
         obj.send(String.fromCharCode(0x00, obj.InputType.KEYUNICODE, 0x00, 0x07, (action - 1)) + ShortToStr(val));
     }
 
@@ -499,11 +593,14 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
             if (event.addy) { Y += event.addy; }
 
             if (X >= 0 && X <= obj.Canvas.canvas.width && Y >= 0 && Y <= obj.Canvas.canvas.height) {
+                // Map the displayed (view-rotated) canvas position back to desktop coordinates,
+                // like amt-desktop does; without this every rotated view sends wrong mouse positions.
+                if (obj.rotation != 0) { var rotatedX = obj.crotX(X, Y); Y = obj.crotY(X, Y); X = rotatedX; }
                 var Button = 0;
                 var Delta = 0;
                 if (Action == obj.KeyAction.UP || Action == obj.KeyAction.DOWN) {
                     if (event.which) { ((event.which == 1) ? (Button = obj.MouseButton.LEFT) : ((event.which == 2) ? (Button = obj.MouseButton.MIDDLE) : (Button = obj.MouseButton.RIGHT))); }
-                    else if (event.button) { ((event.button == 0) ? (Button = obj.MouseButton.LEFT) : ((event.button == 1) ? (Button = obj.MouseButton.MIDDLE) : (Button = obj.MouseButton.RIGHT))); }
+                    else if (typeof event.button == 'number') { ((event.button == 0) ? (Button = obj.MouseButton.LEFT) : ((event.button == 1) ? (Button = obj.MouseButton.MIDDLE) : (Button = obj.MouseButton.RIGHT))); }
                 }
                 else if (Action == obj.KeyAction.SCROLL) {
                     if (event.detail) { Delta = (-1 * (event.detail * 120)); } else if (event.wheelDelta) { Delta = (event.wheelDelta * 3); }
@@ -514,6 +611,9 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
                     if (Button == obj.MouseButton.LEFT) { Button = obj.MouseButton.RIGHT; }
                     else if (Button == obj.MouseButton.RIGHT) { Button = obj.MouseButton.LEFT; }
                 }
+
+                // Reverse mouse wheel if needed
+                if (obj.ReverseMouseWheel) { Delta = -1 * Delta; }
 
                 var MouseMsg = "";
                 if (Action == obj.KeyAction.DBLCLICK) {
@@ -542,7 +642,7 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
 
     obj.onResize = function () {
         if (obj.ScreenWidth == 0 || obj.ScreenHeight == 0) return;
-        if (obj.Canvas.canvas.width == obj.ScreenWidth && obj.Canvas.canvas.height == obj.ScreenHeight) return;
+        if ((obj.Canvas.canvas.width == obj.ScreenWidth) && (obj.Canvas.canvas.height == obj.ScreenHeight)) return;
         if (obj.FirstDraw) {
             obj.Canvas.canvas.width = obj.ScreenWidth;
             obj.Canvas.canvas.height = obj.ScreenHeight;
@@ -563,13 +663,17 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
     obj.xxMouseWheel = function (e) { if (obj.State == 3) { obj.SendMouseMsg(obj.KeyAction.SCROLL, e); return false; } return true; }
     obj.xxKeyUp = function (e) {
         if ((e.key != 'Dead') && (obj.State == 3)) {
-            if ((typeof e.key == 'string') && (e.key.length == 1) && (e.ctrlKey != true) && (e.altKey != true) && ((obj.remoteKeyMap == false) || (obj.debugmode > 0))) { obj.SendKeyUnicode(obj.KeyAction.UP, e.key.charCodeAt(0)); } else { obj.SendKeyMsg(obj.KeyAction.UP, e); }
+            if ((typeof e.key == 'string') && (e.key.length == 1) && (e.ctrlKey != true) && (e.altKey != true) && (obj.remoteKeyMap == false)) {
+                obj.SendKeyUnicode(obj.KeyAction.UP, e.key.charCodeAt(0));
+            } else {
+                obj.SendKeyMsg(obj.KeyAction.UP, e);
+            }
         }
         if (e.preventDefault) e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); return false;
     }
     obj.xxKeyDown = function (e) {
         if ((e.key != 'Dead') && (obj.State == 3)) {
-            if (!((typeof e.key == 'string') && (e.key.length == 1) && (e.ctrlKey != true) && (e.altKey != true) && ((obj.remoteKeyMap == false) || (obj.debugmode > 0)))) {
+            if (!((typeof e.key == 'string') && (e.key.length == 1) && (e.ctrlKey != true) && (e.altKey != true) && (obj.remoteKeyMap == false))) {
                 obj.SendKeyMsg(obj.KeyAction.DOWN, e);
                 if (e.preventDefault) e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); return false;
             }
@@ -577,7 +681,9 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
     }
     obj.xxKeyPress = function (e) {
         if ((e.key != 'Dead') && (obj.State == 3)) {
-            if ((typeof e.key == 'string') && (e.key.length == 1) && (e.ctrlKey != true) && (e.altKey != true) && ((obj.remoteKeyMap == false) || (obj.debugmode > 0))) { obj.SendKeyUnicode(obj.KeyAction.DOWN, e.key.charCodeAt(0)); } //else { obj.SendKeyMsg(obj.KeyAction.DOWN, e); }
+            if ((typeof e.key == 'string') && (e.key.length == 1) && (e.ctrlKey != true) && (e.altKey != true) && (obj.remoteKeyMap == false)) {
+                obj.SendKeyUnicode(obj.KeyAction.DOWN, e.key.charCodeAt(0));
+            } // else { obj.SendKeyMsg(obj.KeyAction.DOWN, e); }
         }
         if (e.preventDefault) e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); return false;
     }
@@ -738,17 +844,28 @@ var CreateAgentRemoteDesktop = function (canvasid, scrolldiv) {
 
     obj.GrabKeyInput = function () {
         if (obj.xxKeyInputGrab == true) return;
+        // Save the current handlers so UnGrabKeyInput can restore them instead of
+        // leaving the document without any keyboard handler. Only take ownership
+        // of slots this instance does not already own.
+        if (document.onkeydown !== obj.xxKeyDown) { obj._savedOnKeyDown = document.onkeydown; }
+        if (document.onkeyup !== obj.xxKeyUp) { obj._savedOnKeyUp = document.onkeyup; }
+        if (document.onkeypress !== obj.xxKeyPress) { obj._savedOnKeyPress = document.onkeypress; }
         document.onkeyup = obj.xxKeyUp;
         document.onkeydown = obj.xxKeyDown;
-        document.onkeypress = obj.xxKeyPress;c
+        document.onkeypress = obj.xxKeyPress;
         obj.xxKeyInputGrab = true;
     }
 
     obj.UnGrabKeyInput = function () {
         if (obj.xxKeyInputGrab == false) return;
-        document.onkeyup = null;
-        document.onkeydown = null;
-        document.onkeypress = null;
+        // Restore the handlers that were in place before GrabKeyInput, but only
+        // for slots this instance still owns. A newer session may have taken over
+        // the slots meanwhile (disconnect + reconnect of a grabbed session), in
+        // which case leave the current handlers alone.
+        if (document.onkeydown === obj.xxKeyDown) { document.onkeydown = obj._savedOnKeyDown || null; }
+        if (document.onkeyup === obj.xxKeyUp) { document.onkeyup = obj._savedOnKeyUp || null; }
+        if (document.onkeypress === obj.xxKeyPress) { document.onkeypress = obj._savedOnKeyPress || null; }
+        obj._savedOnKeyDown = obj._savedOnKeyUp = obj._savedOnKeyPress = null;
         obj.xxKeyInputGrab = false;
     }
 

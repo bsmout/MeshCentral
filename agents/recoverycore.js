@@ -7,7 +7,6 @@ var tunnels = {};
 var fs = require('fs');
 
 var needStreamFix = (new Date(process.versions.meshAgent) < new Date('2020-01-21 13:27:45.000-08:00'));
-
 try
 {
     Object.defineProperty(Array.prototype, 'find', {
@@ -486,8 +485,8 @@ function windows_execve(name, agentfilename, sessionid) {
     var cmd = require('_GenericMarshal').CreateVariable(process.env['windir'] + '\\system32\\cmd.exe', { wide: true });
     var args = require('_GenericMarshal').CreateVariable(3 * require('_GenericMarshal').PointerSize);
     var arg1 = require('_GenericMarshal').CreateVariable('cmd.exe', { wide: true });
-    var arg2 = require('_GenericMarshal').CreateVariable('/C wmic service "' + name + '" call stopservice & "' + cwd + agentfilename + '.update.exe" -b64exec ' + 'dHJ5CnsKICAgIHZhciBzZXJ2aWNlTG9jYXRpb24gPSBwcm9jZXNzLmFyZ3YucG9wKCkudG9Mb3dlckNhc2UoKTsKICAgIHJlcXVpcmUoJ3Byb2Nlc3MtbWFuYWdlcicpLmVudW1lcmF0ZVByb2Nlc3NlcygpLnRoZW4oZnVuY3Rpb24gKHByb2MpCiAgICB7CiAgICAgICAgZm9yICh2YXIgcCBpbiBwcm9jKQogICAgICAgIHsKICAgICAgICAgICAgaWYgKHByb2NbcF0ucGF0aCAmJiAocHJvY1twXS5wYXRoLnRvTG93ZXJDYXNlKCkgPT0gc2VydmljZUxvY2F0aW9uKSkKICAgICAgICAgICAgewogICAgICAgICAgICAgICAgcHJvY2Vzcy5raWxsKHByb2NbcF0ucGlkKTsKICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICBwcm9jZXNzLmV4aXQoKTsKICAgIH0pOwp9CmNhdGNoIChlKQp7CiAgICBwcm9jZXNzLmV4aXQoKTsKfQ==' +
-        ' "' + process.execPath + '" & copy "' + cwd + agentfilename + '.update.exe" "' + process.execPath + '" & wmic service "' + name + '" call startservice & erase "' + cwd + agentfilename + '.update.exe"', { wide: true });
+    var arg2 = require('_GenericMarshal').CreateVariable('/C net stop "' + name + '" & "' + cwd + agentfilename + '.update.exe" -b64exec ' + 'dHJ5CnsKICAgIHZhciBzZXJ2aWNlTG9jYXRpb24gPSBwcm9jZXNzLmFyZ3YucG9wKCkudG9Mb3dlckNhc2UoKTsKICAgIHJlcXVpcmUoJ3Byb2Nlc3MtbWFuYWdlcicpLmVudW1lcmF0ZVByb2Nlc3NlcygpLnRoZW4oZnVuY3Rpb24gKHByb2MpCiAgICB7CiAgICAgICAgZm9yICh2YXIgcCBpbiBwcm9jKQogICAgICAgIHsKICAgICAgICAgICAgaWYgKHByb2NbcF0ucGF0aCAmJiAocHJvY1twXS5wYXRoLnRvTG93ZXJDYXNlKCkgPT0gc2VydmljZUxvY2F0aW9uKSkKICAgICAgICAgICAgewogICAgICAgICAgICAgICAgcHJvY2Vzcy5raWxsKHByb2NbcF0ucGlkKTsKICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICBwcm9jZXNzLmV4aXQoKTsKICAgIH0pOwp9CmNhdGNoIChlKQp7CiAgICBwcm9jZXNzLmV4aXQoKTsKfQ==' +
+        ' "' + process.execPath + '" & copy "' + cwd + agentfilename + '.update.exe" "' + process.execPath + '" & net start "' + name + '" & erase "' + cwd + agentfilename + '.update.exe"', { wide: true });
 
     if (name == null)
     {
@@ -553,15 +552,15 @@ function agentUpdate_Start(updateurl, updateoptions) {
             if (process.platform == 'win32')
             {
                 // Special Processing for Temporary/Console Mode Agents on Windows
-                var parms = windows_getCommandLine();
-                if (parms.findIndex(function (val) { return (val.toUpperCase() == 'RUN' || val.toUpperCase() == 'CONNECT');})>=0)
+                var parms = windows_getCommandLine(); // This uses FFI to fetch the command line parameters that the agent was started with
+                if (parms.findIndex(function (val) { return (val != null && (val.toUpperCase() == 'RUN' || val.toUpperCase() == 'CONNECT')); }) >= 0)
                 {
                     // This is a Temporary/Console Mode Agent
                     sendConsoleText('This is a temporary/console agent, checking for conflicts with background services...');
 
                     // Check to see if our binary conflicts with an installed agent
                     var agents = _getPotentialServiceNames();
-                    if(_getPotentialServiceNames().length>0)
+                    if (_getPotentialServiceNames().length > 0)
                     {
                         sendConsoleText('Self update cannot continue because the installed agent (' + agents[0] + ') conflicts with the currently running Temp/Console agent...', sessionid);
                         return;
@@ -630,6 +629,29 @@ function agentUpdate_Start(updateurl, updateoptions) {
             });
             agentUpdate_Start._selfupdate.on('response', function (img)
             {
+                if (img.statusCode != 200)
+                {
+                    // Saving an error page fails the hash check, or replaces the agent when there is no hash to check
+                    // The agent discards the unread body, abort() here would pool a dead socket and hang the next download
+                    agentUpdate_Start._selfupdate = null;
+                    sendConsoleText('Self Update failed, because the server replied with HTTP ' + img.statusCode + ', URL: ' + (updateurl != null ? updateurl : options.path), sessionid);
+                    sendAgentMessage('Self Update failed, because the server replied with HTTP ' + img.statusCode + ', URL: ' + (updateurl != null ? updateurl : options.path), 3);
+
+                    // Only a server error or rate limiting can clear up by itself
+                    if ((img.statusCode < 500) && (img.statusCode != 429)) { return; }
+                    if (++agentUpdate_Start._retryCount < 4)
+                    {
+                        sendConsoleText('Self Update will try again in 20 seconds...', sessionid);
+                        agentUpdate_Start._timeout = setTimeout(agentUpdate_Start, 20000, updateurl, updateoptions);
+                    }
+                    else
+                    {
+                        agentUpdate_Start._retryCount = 0;
+                        sendConsoleText('Self Update giving up, too many failures...', sessionid);
+                        sendAgentMessage('Self Update giving up, too many failures...', 3);
+                    }
+                    return;
+                }
                 var self = this;
                 this._file = require('fs').createWriteStream(agentfilename + (process.platform=='win32'?'.update.exe':'.update'), { flags: 'wb' });
                 this._filehash = require('SHA384Stream').create();
@@ -648,14 +670,29 @@ function agentUpdate_Start(updateurl, updateoptions) {
                             sendAgentMessage('Self Update FAILED because the downloaded agent FAILED hash check (' + agentUpdate_Start._retryCount + '), URL: ' + updateurl, 3);
                             agentUpdate_Start._selfupdate = null;
 
+                            try
+                            {
+                                // We are clearing these two properties, becuase some older agents may not cleanup correctly causing problems with the retry
+                                require('https').globalAgent.sockets = {};  
+                                require('https').globalAgent.requests = {};
+                            }
+                            catch(z)
+                            {}
+                            if (needStreamFix)
+                            {
+                                sendConsoleText('This is an older agent that may have an httpstream bug. On next retry will try to fetch the update differently...');
+                                needStreamFix = false;
+                            }
+
                             if (agentUpdate_Start._retryCount < 4)
                             {
                                 // Retry the download again
-                                sendConsoleText('Self Update will try again in 60 seconds...', sessionid);
-                                agentUpdate_Start._timeout = setTimeout(agentUpdate_Start, 60000, updateurl, updateoptions);
+                                sendConsoleText('Self Update will try again in 20 seconds...', sessionid);
+                                agentUpdate_Start._timeout = setTimeout(agentUpdate_Start, 20000, updateurl, updateoptions);
                             }
                             else
                             {
+                                agentUpdate_Start._retryCount = 0;
                                 sendConsoleText('Self Update giving up, too many failures...', sessionid);
                                 sendAgentMessage('Self Update giving up, too many failures...', 3);
                             }
@@ -708,8 +745,11 @@ function agentUpdate_Start(updateurl, updateoptions) {
                                 }
                                 catch (zz)
                                 {
-                                    sendConsoleText('Self Update encountered an error trying to restart service', sessionid);
-                                    sendAgentMessage('Self Update encountered an error trying to restart service', 3);
+                                    if (zz.toString() != 'waitExit() aborted because thread is exiting')
+                                    {
+                                        sendConsoleText('Self Update encountered an error trying to restart service', sessionid);
+                                        sendAgentMessage('Self Update encountered an error trying to restart service', 3);
+                                    }
                                 }
                                 break;
                         }
@@ -900,7 +940,8 @@ function onTunnelControlData(data, ws) {
 }
 
 
-require('MeshAgent').AddCommandHandler(function (data) {
+require('MeshAgent').AddCommandHandler(function (data)
+{
     if (typeof data == 'object') {
         // If this is a console command, parse it and call the console handler
         switch (data.action) {
@@ -1382,7 +1423,7 @@ function processConsoleCommand(cmd, args, rights, sessionid) {
     if (response != null) { sendConsoleText(response, sessionid); }
 }
 
-// Get a formated response for a given directory path
+// Get a formatted response for a given directory path
 function getDirectoryInfo(reqpath) {
     var response = { path: reqpath, dir: [] };
     if (((reqpath == undefined) || (reqpath == '')) && (process.platform == 'win32')) {

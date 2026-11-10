@@ -201,8 +201,10 @@ module.exports.CreateAmtProvisioningServer = function (parent, config) {
                 var vs = getInstance(amtlogicalelements, 'AMT')['VersionString'];
                 if (vs != null) {
                     dev.aquired.version = vs;
-                    dev.aquired.versionmajor = parseInt(dev.aquired.version.split('.')[0]);
-                    dev.aquired.versionminor = parseInt(dev.aquired.version.split('.')[1]);
+                    const versionSplit = parseInt(dev.aquired.version.split('.'));
+                    dev.aquired.versionmajor = parseInt(versionSplit[0]);
+                    dev.aquired.versionminor = parseInt(versionSplit[1]);
+                    if (versionSplit.length >= 3) { dev.aquired.versionmaintenance = parseInt(versionSplit[2]); }
                 }
             }
         }
@@ -210,10 +212,14 @@ module.exports.CreateAmtProvisioningServer = function (parent, config) {
         // Fetch the Intel AMT version from HTTP stack
         if ((dev.amtversionstr == null) && (stack.wsman.comm.amtVersion != null)) {
             var s = stack.wsman.comm.amtVersion.split('.');
-            if (s.length >= 3) {
-                dev.aquired.version = s[0] + '.' + s[1] + '.' + s[2];
+            if (s.length >= 2) {
+                dev.aquired.version = s[0] + '.' + s[1];
                 dev.aquired.versionmajor = parseInt(s[0]);
                 dev.aquired.versionminor = parseInt(s[1]);
+                if (s.length >= 3) {
+                    dev.aquired.version = s[0] + '.' + s[1] + '.' + s[2];
+                    dev.aquired.versionmaintenance = parseInt(s[2]);
+                }
             }
         }
 
@@ -283,6 +289,31 @@ module.exports.CreateAmtProvisioningServer = function (parent, config) {
         dev.amtstack.BatchEnum(null, ['AMT_PublicKeyCertificate', 'AMT_PublicPrivateKeyPair', 'AMT_TLSSettingData', 'AMT_TLSCredentialContext'], attemptTlsSyncEx);
     }
 
+    // Intel AMT is not always in a good spot to generate a key pair. This will retry at 10 second interval.
+    function generateKeyPairWithRetry(dev, func) {
+        if (isAmtDeviceValid(dev) == false) return;
+        if (dev.keyPairAttempts == null) { dev.keyPairAttempts = 1; } else { dev.keyPairAttempts++; }
+        dev.amtstack.AMT_PublicKeyManagementService_GenerateKeyPair(0, 2048, function (stack, name, responses, status) {
+            if (isAmtDeviceValid(dev) == false) { delete dev.keyPairAttempts; return; }
+            if ((status == 200) || (dev.keyPairAttempts > 19)) {
+                delete dev.keyPairAttempts;
+                func(stack, name, responses, status);
+            } else {
+                if ((responses.Body != null) && (responses.Body.ReturnValue != null) && (responses.Body.ReturnValueStr != null)) {
+                    dev.consoleMsg("Failed to generate a key pair (" + status + ", " + responses.Body.ReturnValue + ", \"" + responses.Body.ReturnValueStr + "\"), attempt " + dev.keyPairAttempts + ", trying again in 10 seconds...");
+                } else {
+                    dev.consoleMsg("Failed to generate a key pair (" + status + "), attempt " + dev.keyPairAttempts + ", trying again in 10 seconds...");
+                }
+
+                // Wait 10 seconds before attempting again
+                var f = function doManage() { generateKeyPairWithRetry(doManage.dev, doManage.func); }
+                f.dev = dev;
+                f.func = func;
+                setTimeout(f, 10000);
+            }
+        });
+    }
+
     function attemptTlsSyncEx(stack, name, responses, status) {
         const dev = stack.dev;
         if (isAmtDeviceValid(dev) == false) return; // Device no longer exists, ignore this request.
@@ -315,7 +346,7 @@ module.exports.CreateAmtProvisioningServer = function (parent, config) {
         if (xxTlsCurrentCert === null) {
             // Start by generating a key pair
             dev.consoleMsg("No TLS certificate. Generating key pair...");
-            dev.amtstack.AMT_PublicKeyManagementService_GenerateKeyPair(0, 2048, function (stack, name, responses, status) {
+            generateKeyPairWithRetry(dev, function (stack, name, responses, status) {
                 const dev = stack.dev;
                 if (isAmtDeviceValid(dev) == false) return; // Device no longer exists, ignore this request.
                 if (status != 200) { dev.consoleMsg("Failed to generate a key pair (" + status + ")."); removeAmtDevice(dev, 20); return; }
@@ -448,7 +479,22 @@ module.exports.CreateAmtProvisioningServer = function (parent, config) {
 
             // Save activation data to amtactivation.log
             var domain = parent.config.domains[dev.domainid];
-            obj.logAmtActivation(domain, { time: new Date(), action: 'acmactivate-bare-metal', domain: dev.domainid, amtUuid: dev.guid, newmebx: config.newmebxpassword, mesh: dev.meshid, amtRealm: dev.aquired.realm, amtver: dev.aquired.version, host: dev.aquired.host, ip: dev.addr, user: dev.aquired.user, pass: dev.aquired.pass, tls: dev.aquired.tls, tlshash: dev.aquired.hash });
+            obj.logAmtActivation(domain, {
+                time: new Date(),
+                action: 'acmactivate-bare-metal',
+                domain: dev.domainid,
+                amtUuid: dev.guid,
+                newmebx: config.newmebxpassword,
+                mesh: dev.meshid,
+                amtRealm: dev.aquired.realm,
+                amtver: dev.aquired.version,
+                host: dev.aquired.host,
+                ip: dev.addr,
+                user: dev.aquired.user,
+                password: dev.aquired.pass,
+                tls: dev.aquired.tls,
+                tlshash: dev.aquired.hash
+            });
 
             // Update device in the database
             if (UpdateDevice(dev) == false) return;

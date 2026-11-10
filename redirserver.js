@@ -39,6 +39,9 @@ module.exports.CreateRedirServer = function (parent, db, args, func) {
         res.redirect('https://' + host + ':' + httpsPort + req.url);
     }
 
+    // Setup CrowdSec bouncer middleware if needed
+    if (parent.crowdsecMiddleware != null) { obj.app.use(parent.crowdsecMiddleware); }
+
     /*
     // Return the current domain of the request
     function getDomain(req) {
@@ -119,7 +122,7 @@ module.exports.CreateRedirServer = function (parent, db, args, func) {
         if (obj.parent.fs.existsSync(p)) { obj.app.use(url + '.well-known', obj.express.static(p)); }
 
         // Setup all of the redirections to HTTPS
-        const redirections = ['player.htm', 'terms', 'logout', 'MeshServerRootCert.cer', 'mescript.ashx', 'checkmail', 'agentinvite', 'messenger', 'meshosxagent', 'devicepowerevents.ashx', 'downloadfile.ashx', 'userfiles/*', 'webrelay.ashx', 'health.ashx', 'logo.png', 'welcome.jpg'];
+        const redirections = ['player.htm', 'terms', 'logout', 'MeshServerRootCert.cer', 'mescript.ashx', 'checkmail', 'agentinvite', 'messenger', 'meshosxagent', 'devicepowerevents.ashx', 'downloadfile.ashx', 'userfiles/*', 'webrelay.ashx', 'health.ashx', 'logo.png', 'welcome.jpg', 'invite'];
         for (i in redirections) { obj.app.get(url + redirections[i], performRedirection); }
     }
 
@@ -142,7 +145,7 @@ module.exports.CreateRedirServer = function (parent, db, args, func) {
             obj.parent.updateServerState('redirect-port', port);
             func(obj.port);
         }).on('error', function (err) {
-            if ((err.code == 'EACCES') && (port < 65535)) { StartRedirServer(port + 1); } else { console.log(err); func(obj.port); }
+            if ((err.code == 'EACCES') && (port < 65535)) { StartRedirServer(port + 1, addr); } else { console.log(err); func(obj.port); }
         });
     }
 

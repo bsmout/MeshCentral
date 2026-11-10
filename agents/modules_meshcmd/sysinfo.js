@@ -106,32 +106,39 @@ function windows_memUtilization()
     return (ret);
 }
 
-function linux_cpuUtilization()
-{
+var cpuLastIdle = [];
+var cpuLastSum = [];
+function linux_cpuUtilization() {
     var ret = { cpus: [] };
     var info = require('fs').readFileSync('/proc/stat');
     var lines = info.toString().split('\n');
     var columns;
     var x, y;
-    var sum, idle, utilization;
-    for (var i in lines)
-    {
+    var cpuNo = 0;
+    var currSum, currIdle, utilization;
+    for (var i in lines) {
         columns = lines[i].split(' ');
         if (!columns[0].startsWith('cpu')) { break; }
 
-        x = 0, sum = 0;
+        x = 0, currSum = 0;
         while (columns[++x] == '');
-        for (y = x; y < columns.length; ++y) { sum += parseInt(columns[y]); }
-        idle = parseInt(columns[3 + x]);
-        utilization = (100 - ((idle / sum) * 100)); //.toFixed(2);
-        if (!ret.total)
-        {
+        for (y = x; y < columns.length; ++y) { currSum += parseInt(columns[y]); }
+        currIdle = parseInt(columns[3 + x]);
+
+        var diffIdle = currIdle - cpuLastIdle[cpuNo];
+        var diffSum = currSum - cpuLastSum[cpuNo];
+
+        utilization = (100 - ((diffIdle / diffSum) * 100));
+
+        cpuLastSum[cpuNo] = currSum;
+        cpuLastIdle[cpuNo] = currIdle;
+
+        if (!ret.total) {
             ret.total = utilization;
-        }
-        else
-        {
+        } else {
             ret.cpus.push(utilization);
         }
+        ++cpuNo;
     }
 
     var p = new promise(function (res, rej) { this._res = res; this._rej = rej; });
@@ -218,19 +225,14 @@ function macos_memUtilization()
 function windows_thermals()
 {
     var ret = [];
-    child = require('child_process').execFile(process.env['windir'] + '\\System32\\wbem\\wmic.exe', ['wmic', '/namespace:\\\\root\\wmi', 'PATH', 'MSAcpi_ThermalZoneTemperature', 'get', 'CurrentTemperature']);
-    child.stdout.str = ''; child.stdout.on('data', function (c) { this.str += c.toString(); });
-    child.stderr.str = ''; child.stderr.on('data', function (c) { this.str += c.toString(); });
-    child.waitExit();
-
-    if(child.stdout.str.trim!='')
-    {
-        var lines = child.stdout.str.trim().split('\r\n');
-        for (var i = 1; i < lines.length; ++i)
-        {
-            if (lines[i].trim() != '') { ret.push(((parseFloat(lines[i]) / 10) - 273.15).toFixed(2)); }
+    try {
+        ret = require('win-wmi-fixed').query('ROOT\\WMI', 'SELECT CurrentTemperature,InstanceName FROM MSAcpi_ThermalZoneTemperature',['CurrentTemperature','InstanceName']);
+        if (ret[0]) {
+            for (var i = 0; i < ret.length; ++i) {
+                ret[i]['CurrentTemperature'] = ((parseFloat(ret[i]['CurrentTemperature']) / 10) - 273.15).toFixed(2);
+            }
         }
-    }
+    } catch (ex) { }
     return (ret);
 }
 
@@ -278,16 +280,10 @@ function macos_thermals()
     return (ret);
 }
 
-switch(process.platform)
-{
-    case 'linux':
-        module.exports = { cpuUtilization: linux_cpuUtilization, memUtilization: linux_memUtilization, thermals: linux_thermals };
-        break;
-    case 'win32':
-        module.exports = { cpuUtilization: windows_cpuUtilization, memUtilization: windows_memUtilization, thermals: windows_thermals };
-        break;
-    case 'darwin':
-        module.exports = { cpuUtilization: macos_cpuUtilization, memUtilization: macos_memUtilization, thermals: macos_thermals };
-        break;
-}
+const platformConfig = {
+    linux: { cpuUtilization: linux_cpuUtilization, memUtilization: linux_memUtilization, thermals: linux_thermals },
+    win32: { cpuUtilization: windows_cpuUtilization, memUtilization: windows_memUtilization, thermals: windows_thermals },
+    darwin: { cpuUtilization: macos_cpuUtilization, memUtilization: macos_memUtilization, thermals: macos_thermals }
+};
 
+module.exports = platformConfig[process.platform];

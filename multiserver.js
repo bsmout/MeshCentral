@@ -86,12 +86,15 @@ module.exports.CreateMultiServer = function (parent, args) {
 
                 // Start authenticate the peer server by sending a auth nonce & server TLS cert hash.
                 // Send 384 bits SHA384 hash of TLS cert public key + 384 bits nonce
-                obj.ws.send(obj.common.ShortToStr(1) + obj.serverCertHash + obj.nonce); // Command 1, hash + nonce
+                obj.ws.send(Buffer.from(obj.common.ShortToStr(1) + obj.serverCertHash + obj.nonce, 'binary')); // Command 1, hash + nonce
             });
 
             // If a message is received
             obj.ws.on('message', function (msg) {
-                if (typeof msg != 'string') { msg = msg.toString('binary'); }
+                if (typeof msg != 'string') {
+                    if (msg[0] == 123) { msg = msg.toString('utf8'); }
+                    else { msg = msg.toString('binary'); }
+                }
                 if (msg.length < 2) return;
 
                 if (msg.charCodeAt(0) == 123) {
@@ -101,7 +104,7 @@ module.exports.CreateMultiServer = function (parent, args) {
                     switch (cmd) {
                         case 1: {
                             // Server authentication request
-                            if (msg.length != 98) { obj.parent.parent.debug('peer', 'OutPeer: BAD MESSAGE(A1)'); return; }
+                            if (msg.length != 98) { obj.parent.parent.debug('peer', 'OutPeer: Bad server authentication message, length = ' + msg.length + ', should be 98. HEX: ' + Buffer.from(msg.substring(0, 4096), 'binary').toString('hex')); return; }
 
                             // Check that the server hash matches the TLS server certificate public key hash
                             if (obj.url.toLowerCase().startsWith('wss://') && (obj.serverCertHash != msg.substring(2, 50))) { obj.parent.parent.debug('peer', 'OutPeer: Server hash mismatch.'); disconnect(); return; }
@@ -110,7 +113,7 @@ module.exports.CreateMultiServer = function (parent, args) {
                             // Perform the hash signature using the server agent certificate
                             obj.parent.parent.certificateOperations.acceleratorPerformSignature(0, msg.substring(2) + obj.nonce, null, function (tag, signature) {
                                 // Send back our certificate + signature
-                                if (obj.ws != null) { obj.ws.send(obj.common.ShortToStr(2) + obj.common.ShortToStr(obj.agentCertificateAsn1.length) + obj.agentCertificateAsn1 + signature); } // Command 2, certificate + signature
+                                if (obj.ws != null) { obj.ws.send(Buffer.from(obj.common.ShortToStr(2) + obj.common.ShortToStr(obj.agentCertificateAsn1.length) + obj.agentCertificateAsn1 + signature, 'binary')); } // Command 2, certificate + signature
                             });
 
                             break;
@@ -139,7 +142,7 @@ module.exports.CreateMultiServer = function (parent, args) {
 
                             // Send information about our server to the peer
                             if (obj.connectionState == 15) {
-                                obj.ws.send(JSON.stringify({ action: 'info', serverid: obj.parent.serverid, dbid: obj.parent.parent.db.identifier, key: obj.parent.parent.serverKey.toString('hex'), serverCertHash: obj.parent.parent.webserver.webCertificateHashBase64 }));
+                                obj.send({ action: 'info', serverid: obj.parent.serverid, dbid: obj.parent.parent.db.identifier, key: obj.parent.parent.serverKey.toString('hex'), serverCertHash: obj.parent.parent.webserver.webCertificateHashBase64 });
                                 for (var i in obj.pendingData) { processServerData(obj.pendingData[i]); } // Process any pending data
                                 obj.pendingData = [];
                             }
@@ -150,7 +153,7 @@ module.exports.CreateMultiServer = function (parent, args) {
                             // Peer server confirmed authentication, we are allowed to send commands to the server
                             obj.connectionState |= 8;
                             if (obj.connectionState == 15) {
-                                obj.ws.send(JSON.stringify({ action: 'info', serverid: obj.parent.serverid, dbid: obj.parent.parent.db.identifier, key: obj.parent.parent.serverKey.toString('hex'), serverCertHash: obj.parent.parent.webserver.webCertificateHashBase64 }));
+                                obj.send({ action: 'info', serverid: obj.parent.serverid, dbid: obj.parent.parent.db.identifier, key: obj.parent.parent.serverKey.toString('hex'), serverCertHash: obj.parent.parent.webserver.webCertificateHashBase64 });
                                 for (var i in obj.pendingData) { processServerData(obj.pendingData[i]); } // Process any pending data
                                 obj.pendingData = [];
                             }
@@ -187,9 +190,9 @@ module.exports.CreateMultiServer = function (parent, args) {
         obj.send = function (msg) {
             try {
                 if (obj.ws == null || obj.connectionState != 15) { return; }
-                if (typeof msg == 'object') { obj.ws.send(JSON.stringify(msg)); return; }
                 if (typeof msg == 'string') { obj.ws.send(msg); return; }
-            } catch (e) { }
+                if (typeof msg == 'object') { obj.ws.send(JSON.stringify(msg)); return; }
+            } catch (ex) { }
         };
 
         // Process incoming peer server JSON data
@@ -244,12 +247,11 @@ module.exports.CreateMultiServer = function (parent, args) {
         obj.parent.parent.debug('peer', 'InPeer: Connected (' + obj.remoteaddr + ')');
 
         // Send a message to the peer server
-        obj.send = function (data) {
+        obj.send = function (msg) {
             try {
-                if (typeof data == 'string') { obj.ws.send(Buffer.from(data, 'binary')); return; }
-                if (typeof data == 'object') { obj.ws.send(JSON.stringify(data)); return; }
-                obj.ws.send(data);
-            } catch (e) { }
+                if (typeof msg == 'string') { obj.ws.send(msg); return; }
+                if (typeof msg == 'object') { obj.ws.send(JSON.stringify(msg)); return; }
+            } catch (ex) { }
         };
 
         // Disconnect this server
@@ -261,7 +263,10 @@ module.exports.CreateMultiServer = function (parent, args) {
 
         // When data is received from the peer server web socket
         ws.on('message', function (msg) {
-            if (typeof msg != 'string') { msg = msg.toString('binary'); }
+            if (typeof msg != 'string') {
+                if (msg[0] == 123) { msg = msg.toString('utf8'); }
+                else { msg = msg.toString('binary'); }
+            }
             if (msg.length < 2) return;
 
             if (msg.charCodeAt(0) == 123) {
@@ -281,7 +286,7 @@ module.exports.CreateMultiServer = function (parent, args) {
                     // Perform the hash signature using the server agent certificate
                     obj.parent.parent.certificateOperations.acceleratorPerformSignature(0, msg.substring(2) + obj.nonce, null, function (tag, signature) {
                         // Send back our certificate + signature
-                        obj.send(obj.common.ShortToStr(2) + obj.common.ShortToStr(obj.agentCertificateAsn1.length) + obj.agentCertificateAsn1 + signature); // Command 2, certificate + signature
+                        obj.ws.send(Buffer.from(obj.common.ShortToStr(2) + obj.common.ShortToStr(obj.agentCertificateAsn1.length) + obj.agentCertificateAsn1 + signature, 'binary')); // Command 2, certificate + signature
                     });
 
                     // Check the peer server signature if we can
@@ -326,13 +331,13 @@ module.exports.CreateMultiServer = function (parent, args) {
         // Start authenticate the peer server by sending a auth nonce & server TLS cert hash.
         // Send 384 bits SHA382 hash of TLS cert public key + 384 bits nonce
         obj.nonce = obj.crypto.randomBytes(48).toString('binary');
-        obj.send(obj.common.ShortToStr(1) + obj.webCertificateHash + obj.nonce); // Command 1, hash + nonce
+        obj.ws.send(Buffer.from(obj.common.ShortToStr(1) + obj.webCertificateHash + obj.nonce, 'binary')); // Command 1, hash + nonce
 
         // Once we get all the information about an peer server, run this to hook everything up to the server
         function completePeerServerConnection() {
             if (obj.authenticated != 1) return;
-            obj.send(obj.common.ShortToStr(4));
-            obj.send(JSON.stringify({ action: 'info', serverid: obj.parent.serverid, dbid: obj.parent.parent.db.identifier, key: obj.parent.parent.serverKey.toString('hex'), serverCertHash: obj.parent.parent.webserver.webCertificateHashBase64 }));
+            obj.ws.send(Buffer.from(obj.common.ShortToStr(4), 'binary'));
+            obj.send({ action: 'info', serverid: obj.parent.serverid, dbid: obj.parent.parent.db.identifier, key: obj.parent.parent.serverKey.toString('hex'), serverCertHash: obj.parent.parent.webserver.webCertificateHashBase64 });
             obj.authenticated = 2;
 
             // Process any pending data that was received before peer authentication
@@ -405,8 +410,7 @@ module.exports.CreateMultiServer = function (parent, args) {
 
     // Dispatch an event to all other MeshCentral2 peer servers
     obj.DispatchEvent = function (ids, source, event) {
-        var busmsg = JSON.stringify({ action: 'bus', ids: ids, event: event });
-        for (var serverid in obj.peerServers) { obj.peerServers[serverid].send(busmsg); }
+        for (var serverid in obj.peerServers) { obj.peerServers[serverid].send({ action: 'bus', ids: ids, event: event }); }
     };
 
     // Dispatch a message to other MeshCentral2 peer servers
@@ -437,10 +441,10 @@ module.exports.CreateMultiServer = function (parent, args) {
         obj.peerServers[peerServerId] = server;
 
         // Send the list of connections to the peer
-        server.send(JSON.stringify({ action: 'connectivityTable', connectivityTable: obj.parent.peerConnectivityByNode[obj.parent.serverId] }));
+        server.send({ action: 'connectivityTable', connectivityTable: obj.parent.peerConnectivityByNode[obj.parent.serverId] });
 
         // Send a list of user sessions to the peer
-        server.send(JSON.stringify({ action: 'sessionsTable', sessionsTable: Object.keys(obj.parent.webserver.wssessions2) }));
+        server.send({ action: 'sessionsTable', sessionsTable: Object.keys(obj.parent.webserver.wssessions2) });
     };
 
     // We disconnected to a peer server, clean up everything
@@ -588,6 +592,20 @@ module.exports.CreateMultiServer = function (parent, args) {
                 }
                 break;
             }
+            case 'agentCommand': {
+                if (msg.nodeid != null) {
+                    // Route this message to a connected agent
+                    var agent = obj.parent.webserver.wsagents[msg.nodeid];
+                    if (agent != null) { agent.send(JSON.stringify(msg.command)); }
+                } else if (msg.meshid != null) {
+                    // Route this message to all connected agents of this mesh
+                    for (var nodeid in obj.parent.webserver.wsagents) {
+                        var agent = obj.parent.webserver.wsagents[nodeid];
+                        if (agent.dbMeshKey == msg.meshid) { try { agent.send(JSON.stringify(msg.command)); } catch (ex) { } }
+                    }
+                }
+                break;
+            }
             default: {
                 // Unknown peer server command
                 console.log('Unknown action from peer server ' + peerServerId + ': ' + msg.action + '.');
@@ -636,7 +654,7 @@ module.exports.CreateMultiServer = function (parent, args) {
             peerTunnel.ws2.on('close', function (req) { peerTunnel.parent.parent.debug('peer', 'FTunnel disconnect ' + peerTunnel.serverid); peerTunnel.close(); });
 
             // If a message is received from the peer, Peer ---> Browser (TODO: Pipe this?)
-            peerTunnel.ws2.on('message', function (msg) { try { peerTunnel.ws2._socket.pause(); peerTunnel.ws1.send(msg, function () { peerTunnel.ws2._socket.resume(); }); } catch (e) { } });
+            peerTunnel.ws2.on('message', function (msg, isBinary) { try { peerTunnel.ws2._socket.pause(); peerTunnel.ws1.send((isBinary ? msg : msg.toString('binary')), function () { peerTunnel.ws2._socket.resume(); }); } catch (e) { } });
 
             // Register the connection event
             peerTunnel.ws2.on('open', function () {

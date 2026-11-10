@@ -30,7 +30,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
     const net = require('net');
     const tls = require('tls');
     const MAX_IDLE = 90000;         // 90 seconds max idle time, higher than the typical KEEP-ALIVE periode of 60 seconds
-    const KEEPALIVE_INTERVAL = 30;   // 30 seconds is typical keepalive interval for AMT CIRA connection
+    const KEEPALIVE_INTERVAL = 30;  // 30 seconds is typical keepalive interval for AMT CIRA connection
 
     // This MPS server is also a tiny HTTPS server. HTTP responses are here.
     obj.httpResponses = {
@@ -43,8 +43,13 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
         if (obj.args.mpstlsoffload) {
             obj.server = net.createServer(onConnection);
         } else {
-            // Note that in order to support older Intel AMT CIRA connections, we have to turn on TLSv1.
-            obj.server = tls.createServer({ key: certificates.mps.key, cert: certificates.mps.cert, minVersion: 'TLSv1', requestCert: true, rejectUnauthorized: false, ciphers: "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA", secureOptions: constants.SSL_OP_NO_SSLv2 | constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_COMPRESSION }, onConnection);
+            if (obj.args.mpshighsecurity) {
+                // Higher security TLS 1.2 and 1.3 only, some older Intel AMT CIRA connections will fail.
+                obj.server = tls.createServer({ key: certificates.mps.key, cert: certificates.mps.cert, requestCert: true, rejectUnauthorized: false, ciphers: "HIGH:TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:TLS_AES_128_CCM_8_SHA256:TLS_AES_128_CCM_SHA256:TLS_CHACHA20_POLY1305_SHA256", secureOptions: constants.SSL_OP_NO_SSLv2 | constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_COMPRESSION | constants.SSL_OP_CIPHER_SERVER_PREFERENCE | constants.SSL_OP_NO_TLSv1 | constants.SSL_OP_NO_TLSv1_1 }, onConnection)
+            } else {
+                // Lower security MPS in order to support older Intel AMT CIRA connections, we have to turn on TLSv1.
+                obj.server = tls.createServer({ key: certificates.mps.key, cert: certificates.mps.cert, minVersion: 'TLSv1', requestCert: true, rejectUnauthorized: false, ciphers: "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA:@SECLEVEL=0", secureOptions: constants.SSL_OP_NO_SSLv2 | constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_COMPRESSION }, onConnection)
+            }
             //obj.server.on('error', function () { console.log('MPS tls server error'); });
             obj.server.on('newSession', function (id, data, cb) { if (tlsSessionStoreCount > 1000) { tlsSessionStoreCount = 0; tlsSessionStore = {}; } tlsSessionStore[id.toString('hex')] = data; tlsSessionStoreCount++; cb(); });
             obj.server.on('resumeSession', function (id, cb) { cb(null, tlsSessionStore[id.toString('hex')] || null); });
@@ -53,7 +58,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
         obj.server.listen(args.mpsport, args.mpsportbind, function () {
             console.log("MeshCentral Intel(R) AMT server running on " + certificates.AmtMpsName + ":" + args.mpsport + ((args.mpsaliasport != null) ? (", alias port " + args.mpsaliasport) : "") + ".");
             obj.parent.authLog('mps', 'Server listening on ' + ((args.mpsportbind != null) ? args.mpsportbind : '0.0.0.0') + ' port ' + args.mpsport + '.');
-        }).on("error", function (err) { console.error("ERROR: MeshCentral Intel(R) AMT server port " + args.mpsport + " is not available."); if (args.exactports) { process.exit(); } });
+        }).on("error", function (err) { console.error("ERROR: MeshCentral Intel(R) AMT server port " + args.mpsport + " is not available. Check if the MeshCentral is already running."); if (args.exactports) { process.exit(); } });
 
         obj.server.on('tlsClientError', function (err, tlssocket) { if (args.mpsdebug) { var remoteAddress = tlssocket.remoteAddress; if (tlssocket.remoteFamily == 'IPv6') { remoteAddress = '[' + remoteAddress + ']'; } console.log('MPS:Invalid TLS connection from ' + remoteAddress + ':' + tlssocket.remotePort + '.'); } });
     }
@@ -434,7 +439,9 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                 socket.tag.first = false;
 
                 // Setup this node with certificate authentication
-                if (socket.tag.clientCert && socket.tag.clientCert.subject && socket.tag.clientCert.subject.O && socket.tag.clientCert.subject.O.length == 64) {
+                // Note: getPeerCertificate() returns subject.O as an array when the certificate
+                // carries repeated O attributes; require a string so the .split() below cannot throw.
+                if (socket.tag.clientCert && socket.tag.clientCert.subject && (typeof socket.tag.clientCert.subject.O == 'string') && socket.tag.clientCert.subject.O.length == 64) {
                     // This is a node where the MeshID is indicated within the CIRA certificate
                     var domainid = '', meshid;
                     var xx = socket.tag.clientCert.subject.O.split('/');
@@ -454,6 +461,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
 
                     // Fetch the node
                     obj.db.Get(socket.tag.nodeid, function (err, nodes) {
+                        if (err) { parent.debug('mps', 'CIRA db.Get error for ' + socket.tag.nodeid + ': ' + err); obj.close(socket); return; }
                         if ((nodes == null) || (nodes.length !== 1)) {
                             var mesh = obj.parent.webserver.meshes[socket.tag.meshid];
                             if (mesh == null) {
@@ -479,7 +487,10 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                                                 // We are under the limit, create the new device.
                                                 // Node is not in the database, add it. Credentials will be empty until added by the user.
                                                 var device = { type: 'node', mtype: 1, _id: socket.tag.nodeid, meshid: socket.tag.meshid, name: socket.tag.name, icon: (socket.tag.meiState.isBatteryPowered) ? 2 : 1, host: hostname, domain: domainid, intelamt: { user: (typeof socket.tag.meiState.amtuser == 'string') ? socket.tag.meiState.amtuser : '', pass: (typeof socket.tag.meiState.amtpass == 'string') ? socket.tag.meiState.amtpass : '', tls: 0, state: 2 } };
-                                                if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                                if (socket.tag.meiState != null) {
+                                                    if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                                    if ((typeof socket.tag.meiState.Versions == 'object') && (typeof socket.tag.meiState.Versions.Sku == 'string')) { device.intelamt.sku = parseInt(socket.tag.meiState.Versions.Sku); }
+                                                }
                                                 obj.db.Set(device);
 
                                                 // Event the new node
@@ -501,7 +512,10 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
 
                                         // Node is not in the database, add it. Credentials will be empty until added by the user.
                                         var device = { type: 'node', mtype: 1, _id: socket.tag.nodeid, meshid: socket.tag.meshid, name: socket.tag.name, icon: (socket.tag.meiState.isBatteryPowered) ? 2 : 1, host: hostname, domain: domainid, intelamt: { user: (typeof socket.tag.meiState.amtuser == 'string') ? socket.tag.meiState.amtuser : '', pass: (typeof socket.tag.meiState.amtpass == 'string') ? socket.tag.meiState.amtpass : '', tls: 0, state: 2 } };
-                                        if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                        if (socket.tag.meiState != null) {
+                                            if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                            if ((typeof socket.tag.meiState.Versions == 'object') && (typeof socket.tag.meiState.Versions.Sku == 'string')) { device.intelamt.sku = parseInt(socket.tag.meiState.Versions.Sku); }
+                                        }
                                         obj.db.Set(device);
 
                                         // Event the new node
@@ -584,14 +598,18 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                 if (len < 13) return 0;
                 userAuthRequestCount++;
                 var usernameLen = common.ReadInt(data, 1);
+                if ((usernameLen > 2048) || (len < (5 + usernameLen))) return -1;
                 var username = data.substring(5, 5 + usernameLen);
                 var serviceNameLen = common.ReadInt(data, 5 + usernameLen);
+                if ((serviceNameLen > 2048) || (len < (9 + usernameLen + serviceNameLen))) return -1;
                 var serviceName = data.substring(9 + usernameLen, 9 + usernameLen + serviceNameLen);
                 var methodNameLen = common.ReadInt(data, 9 + usernameLen + serviceNameLen);
+                if ((methodNameLen > 2048) || (len < (13 + usernameLen + serviceNameLen + methodNameLen))) return -1;
                 var methodName = data.substring(13 + usernameLen + serviceNameLen, 13 + usernameLen + serviceNameLen + methodNameLen);
                 var passwordLen = 0, password = null;
                 if (methodName == 'password') {
                     passwordLen = common.ReadInt(data, 14 + usernameLen + serviceNameLen + methodNameLen);
+                    if ((passwordLen > 2048) || (len < (18 + usernameLen + serviceNameLen + methodNameLen + passwordLen))) return -1;
                     password = data.substring(18 + usernameLen + serviceNameLen + methodNameLen, 18 + usernameLen + serviceNameLen + methodNameLen + passwordLen);
                 }
                 //console.log('MPS:USERAUTH_REQUEST user=' + username + ', service=' + serviceName + ', method=' + methodName + ', password=' + password);
@@ -663,6 +681,11 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                     }
                 }
 
+                // A real Intel AMT device always sends PROTOCOLVERSION before USERAUTH. Without it,
+                // socket.tag.SystemId is undefined and SystemId.split() below (including inside the
+                // async DNS/DB callbacks) throws uncaught and terminates the server process.
+                if (typeof socket.tag.SystemId != 'string') { SendUserAuthFail(socket); return -1; }
+
                 // If this is a agent-less mesh, use the device guid 3 times as ID.
                 if (initialMesh.mtype == 1) {
                     // Intel AMT GUID (socket.tag.SystemId) will be used as NodeID
@@ -677,6 +700,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                     socket.tag.connectTime = Date.now();
 
                     obj.db.Get(socket.tag.nodeid, function (err, nodes) {
+                        if (err) { parent.debug('mps', 'CIRA db.Get error for ' + socket.tag.nodeid + ': ' + err); obj.close(socket); return; }
                         if ((nodes == null) || (nodes.length !== 1)) {
                             // Check if we already have too many devices for this domain
                             if (domain.limits && (typeof domain.limits.maxdevices == 'number')) {
@@ -698,7 +722,10 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                                             // We are under the limit, create the new device.
                                             // Node is not in the database, add it. Credentials will be empty until added by the user.
                                             var device = { type: 'node', mtype: 1, _id: socket.tag.nodeid, meshid: socket.tag.meshid, name: socket.tag.name, icon: (socket.tag.meiState.isBatteryPowered) ? 2 : 1, host: hostname, domain: initialMesh.domain, intelamt: { user: (typeof socket.tag.meiState.amtuser == 'string') ? socket.tag.meiState.amtuser : '', pass: (typeof socket.tag.meiState.amtpass == 'string') ? socket.tag.meiState.amtpass : '', tls: 0, state: 2 } };
-                                            if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                            if (socket.tag.meiState != null) {
+                                                if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                                if ((typeof socket.tag.meiState.Versions == 'object') && (typeof socket.tag.meiState.Versions.Sku == 'string')) { device.intelamt.sku = parseInt(socket.tag.meiState.Versions.Sku); }
+                                            }
                                             obj.db.Set(device);
 
                                             // Event the new node
@@ -715,7 +742,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                                 return;
                             } else {
                                 // Attempts reverse DNS loopup on the device IP address
-                                require('dns').reverse(socket.remoteAddr, function (err, hostnames) {
+                                const reverseDnsLookupHandler = function (err, hostnames) {
                                     var hostname = socket.remoteAddr;
                                     if ((err == null) && (hostnames != null) && (hostnames.length > 0)) { hostname = hostnames[0]; }
 
@@ -724,14 +751,18 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
 
                                     // Node is not in the database, add it. Credentials will be empty until added by the user.
                                     var device = { type: 'node', mtype: 1, _id: socket.tag.nodeid, meshid: socket.tag.meshid, name: socket.tag.name, icon: (socket.tag.meiState && socket.tag.meiState.isBatteryPowered) ? 2 : 1, host: hostname, domain: initialMesh.domain, intelamt: { user: ((socket.tag.meiState) && (typeof socket.tag.meiState.amtuser == 'string')) ? socket.tag.meiState.amtuser : '', pass: ((socket.tag.meiState) && (typeof socket.tag.meiState.amtpass == 'string')) ? socket.tag.meiState.amtpass : '', tls: 0, state: 2 } };
-                                    if ((socket.tag.meiState != null) && (typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                    if (socket.tag.meiState != null) {
+                                        if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                        if ((typeof socket.tag.meiState.Versions == 'object') && (typeof socket.tag.meiState.Versions.Sku == 'string')) { device.intelamt.sku = parseInt(socket.tag.meiState.Versions.Sku); }
+                                    }
                                     obj.db.Set(device);
 
                                     // Event the new node
                                     addedDeviceCount++;
                                     var change = 'Added CIRA device ' + socket.tag.name + ' to group ' + initialMesh.name;
                                     obj.parent.DispatchEvent(['*', socket.tag.meshid], obj, { etype: 'node', action: 'addnode', node: parent.webserver.CloneSafeNode(device), msg: change, domain: initialMesh.domain });
-                                });
+                                }
+                                try { require('dns').reverse(socket.remoteAddr, reverseDnsLookupHandler); } catch (ex) { reverseDnsLookupHandler(ex, null); }
                             }
                         } else {
                             // Node is already present
@@ -748,6 +779,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                 } else if (initialMesh.mtype == 2) { // If this is a agent mesh, search the mesh for this device UUID
                     // Intel AMT GUID (socket.tag.SystemId) will be used to search the node
                     obj.db.getAmtUuidMeshNode(initialMesh.domain, initialMesh.mtype, socket.tag.SystemId, function (err, nodes) { // TODO: Need to optimize this request with indexes
+                        if (err) { parent.debug('mps', 'CIRA db.Get error for ' + socket.tag.SystemId + ': ' + err); obj.close(socket); return; }
                         if ((nodes == null) || (nodes.length === 0) || (obj.parent.webserver.meshes == null)) {
                             // New CIRA connection for unknown node, create a new device.
                             unknownNodeCount++;
@@ -784,7 +816,10 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
 
                                             // Node is not in the database, add it. Credentials will be empty until added by the user.
                                             var device = { type: 'node', mtype: 2, _id: socket.tag.nodeid, meshid: socket.tag.meshid, name: hostname, icon: (socket.tag.meiState && socket.tag.meiState.isBatteryPowered) ? 2 : 1, host: hostname, domain: initialMesh.domain, intelamt: { user: ((socket.tag.meiState) && (typeof socket.tag.meiState.amtuser == 'string')) ? socket.tag.meiState.amtuser : '', pass: ((socket.tag.meiState) && (typeof socket.tag.meiState.amtpass == 'string')) ? socket.tag.meiState.amtpass : '', tls: 0, state: 2, agent: { id: 0, caps: 0 } } };
-                                            if ((socket.tag.meiState != null) && (typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                            if (socket.tag.meiState != null) {
+                                                if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                                if ((typeof socket.tag.meiState.Versions == 'object') && (typeof socket.tag.meiState.Versions.Sku == 'string')) { device.intelamt.sku = parseInt(socket.tag.meiState.Versions.Sku); }
+                                            }
                                             obj.db.Set(device);
 
                                             // Event the new node
@@ -818,9 +853,11 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
 
                                     // Node is not in the database, add it. Credentials will be empty until added by the user.
                                     var device = { type: 'node', mtype: 2, _id: socket.tag.nodeid, meshid: socket.tag.meshid, name: hostname, icon: (socket.tag.meiState && socket.tag.meiState.isBatteryPowered) ? 2 : 1, host: hostname, domain: initialMesh.domain, agent: { ver: 0, id: 0, caps: 0 }, intelamt: { uuid: socket.tag.SystemId, user: ((socket.tag.meiState) && (typeof socket.tag.meiState.amtuser == 'string')) ? socket.tag.meiState.amtuser : '', pass: ((socket.tag.meiState) && (typeof socket.tag.meiState.amtpass == 'string')) ? socket.tag.meiState.amtpass : '', tls: 0, state: 2 } };
-                                    if ((socket.tag.meiState != null) && (typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                    if (socket.tag.meiState != null) {
+                                        if ((typeof socket.tag.meiState.desc == 'string') && (socket.tag.meiState.desc.length > 0) && (socket.tag.meiState.desc.length < 1024)) { device.desc = socket.tag.meiState.desc; }
+                                        if ((typeof socket.tag.meiState.Versions == 'object') && (typeof socket.tag.meiState.Versions.Sku == 'string')) { device.intelamt.sku = parseInt(socket.tag.meiState.Versions.Sku); }
+                                    }
                                     obj.db.Set(device);
-                                    console.log('ADDED', device);
 
                                     // Event the new node
                                     addedDeviceCount++;
@@ -874,6 +911,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
             case APFProtocol.SERVICE_REQUEST: {
                 if (len < 5) return 0;
                 var xserviceNameLen = common.ReadInt(data, 1);
+                if (xserviceNameLen > 2048) return -1;
                 if (len < 5 + xserviceNameLen) return 0;
                 var xserviceName = data.substring(5, 5 + xserviceNameLen);
                 parent.debug('mpscmd', '--> SERVICE_REQUEST', xserviceName);
@@ -884,6 +922,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
             case APFProtocol.GLOBAL_REQUEST: {
                 if (len < 14) return 0;
                 var requestLen = common.ReadInt(data, 1);
+                if (requestLen > 2048) return -1;
                 if (len < 14 + requestLen) return 0;
                 var request = data.substring(5, 5 + requestLen);
                 //var wantResponse = data.charCodeAt(5 + requestLen);
@@ -935,6 +974,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
             case APFProtocol.CHANNEL_OPEN: {
                 if (len < 33) return 0;
                 var ChannelTypeLength = common.ReadInt(data, 1);
+                if (ChannelTypeLength > 2048) return -1;
                 if (len < (33 + ChannelTypeLength)) return 0;
 
                 // Decode channel identifiers and window size
@@ -944,12 +984,14 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
 
                 // Decode the target
                 var TargetLen = common.ReadInt(data, 17 + ChannelTypeLength);
+                if (TargetLen > 2048) return -1;
                 if (len < (33 + ChannelTypeLength + TargetLen)) return 0;
                 var Target = data.substring(21 + ChannelTypeLength, 21 + ChannelTypeLength + TargetLen);
                 var TargetPort = common.ReadInt(data, 21 + ChannelTypeLength + TargetLen);
 
                 // Decode the source
                 var SourceLen = common.ReadInt(data, 25 + ChannelTypeLength + TargetLen);
+                if (SourceLen > 2048) return -1;
                 if (len < (33 + ChannelTypeLength + TargetLen + SourceLen)) return 0;
                 var Source = data.substring(29 + ChannelTypeLength + TargetLen, 29 + ChannelTypeLength + TargetLen + SourceLen);
                 var SourcePort = common.ReadInt(data, 29 + ChannelTypeLength + TargetLen + SourceLen);
@@ -1076,6 +1118,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                     if (len < 9) return 0;
                     var RecipientChannel = common.ReadInt(data, 1);
                     var LengthOfData = common.ReadInt(data, 5);
+                    if (LengthOfData > 1048576) return -1;
                     if (len < (9 + LengthOfData)) return 0;
                     parent.debug('mpscmddata', '--> CHANNEL_DATA', RecipientChannel, LengthOfData);
                     var cirachannel = socket.tag.channels[RecipientChannel];
@@ -1103,6 +1146,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                 {
                     if (len < 5) return 0;
                     var jsondatalen = common.ReadInt(data, 1);
+                    if (jsondatalen > 1048576) return -1;
                     if (len < (5 + jsondatalen)) return 0;
                     var jsondata = null, jsondatastr = data.substring(5, 5 + jsondatalen);
                     try { jsondata = JSON.parse(jsondatastr); } catch (ex) { }
